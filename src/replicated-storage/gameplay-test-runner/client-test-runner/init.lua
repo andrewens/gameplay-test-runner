@@ -80,10 +80,17 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end
 	local function saveTestFunction(testName, testFunction)
 		--[[
+			@pre: all priority tests are already marked in OrderedTests
             @post: testFunction is saved to GameplayTestFunctions
             @post: testName is also saved
             @error: if testFunction was attempted to be defined twice
         ]]
+
+		-- if we're only running priority tests, this prevents us
+		-- from saving non-priority tests
+		if ONLY_RUN_PRIORITY_TESTS and not OrderedTests[testName] then
+			return
+		end
 
 		-- sanity check
 		saveTestName(testName) -- this will error if testName isn't a string
