@@ -1,3 +1,11 @@
 return function(TestConsole)
-	print("Hello world")
+	TestConsole.output("\nHello")
+	TestConsole.ask("This should yield")
+	TestConsole.output("\nWorld")
+	TestConsole.ask("This should yield")
+	TestConsole.output("\nHello")
+	TestConsole.ask("This should yield")
+	TestConsole.output("\nWorld")
+	TestConsole.ask("This should yield")
+	TestConsole.output("\nGoodbye")
 end

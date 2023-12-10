@@ -1,3 +1,9 @@
 return function(TestConsole)
-	print("Hello world x2")
+	TestConsole.output("\nThis is a different test")
+	TestConsole.ask("This should yield still")
+	TestConsole.output("\nThis is a different test")
+	TestConsole.ask("This should yield still")
+	TestConsole.output("\nThis is a different test")
+	TestConsole.ask("This should yield still")
+	TestConsole.output("\nCya")
 end

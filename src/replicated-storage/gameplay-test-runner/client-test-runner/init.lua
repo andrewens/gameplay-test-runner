@@ -47,10 +47,16 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local TEST_NAME_TO_SERVER_INITIALIZER = CONFIG.TEST_NAME_TO_SERVER_INITIALIZER or {}
 
 	-- var
-	local TestRunnerMaid = Maid()
 	local GameplayTestOrder = {} -- int i --> string testName
 	local GameplayTestFunctions = {} -- string testName --> function(TestConsole): nil
-	local OrderedTests = {} -- string testName --> true
+	local OrderedTests = {} -- string testName --> int i
+
+	local TestRunnerMaid = Maid()
+	local Console
+	local TestConsole
+
+	local testIndex = 1
+	local TestThreads = {} -- int i --> thread of GameplayTestFunctions[i]
 
 	-- private
 	local function saveTestName(testName)
@@ -68,8 +74,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		if OrderedTests[testName] then
 			return
 		end
-		OrderedTests[testName] = true
-		table.insert(GameplayTestOrder, testName)
+        local i = #GameplayTestOrder + 1
+        GameplayTestOrder[i] = testName
+        OrderedTests[testName] = i
 	end
 	local function saveTestFunction(testName, testFunction)
 		--[[
@@ -145,17 +152,49 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
+    local function nextStep()
+        -- move onto next test if current one is finished
+        if coroutine.status(TestThreads[testIndex]) == "dead" then
+            testIndex += 1
+            if testIndex > #GameplayTestOrder then
+                return
+            end
+        end
+
+        coroutine.resume(TestThreads[testIndex], TestConsole)
+    end
+
 	-- init
 	extractGameplayTests()
+	Console = Terminal(ScrollingFrame, {
+        n = nextStep,
+        next = nextStep,
+    })
+	TestRunnerMaid(Console)
+
+    -- threads
+    for i, testName in GameplayTestOrder do
+        local testFunction = GameplayTestFunctions[testName]
+        TestThreads[i] = coroutine.create(testFunction)
+    end
 
 	--[[
-
+        next -->
     ]]
+	local function ask(prompt)
+        Console.output("\n" .. prompt)
+        coroutine.yield()
+    end
+	local function output(text)
+		return Console.output("\n" .. text)
+	end
+	TestConsole = {
+		ask = ask,
+		output = output,
+	}
+	setmetatable(TestConsole, { __index = Console })
 
-	local TestTerminal = Terminal(ScrollingFrame, {})
-	TestRunnerMaid(TestTerminal)
-
-	TestTerminal.initialize()
+	Console.initialize("next")
 
 	return TestRunnerMaid
 end

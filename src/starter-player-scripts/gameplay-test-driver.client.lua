@@ -15,7 +15,7 @@ end
 -- init
 local CONFIG = {
     PRIORITY_TESTS = {
-        "test3",
+        "test1",
         "test2",
     },
     ONLY_RUN_PRIORITY_TESTS = false,
