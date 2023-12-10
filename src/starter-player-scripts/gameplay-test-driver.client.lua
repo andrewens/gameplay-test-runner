@@ -29,7 +29,15 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = LocalPlayer.PlayerGui
 
 local ScrollingFrame = Instance.new("ScrollingFrame")
-ScrollingFrame.Size = UDim2.new(0, 300, 1, 0)
+ScrollingFrame.Size = UDim2.new(0, 400, 1, 0)
 ScrollingFrame.Parent = ScreenGui
 
 local TestRunner = GameplayTestRunner(ScrollingFrame, GameplayTests, CONFIG)
+
+-- styling
+ScrollingFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+ScrollingFrame.BorderSizePixel = 0
+TestRunner.TextBox.TextSize = 18
+TestRunner.TextBox.TextColor3 = Color3.new(1, 1, 1)
+TestRunner.TextBox.Font = Enum.Font.Code
+TestRunner.TextBox.BackgroundTransparency = 1
