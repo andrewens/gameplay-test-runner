@@ -16,9 +16,9 @@ end
 local CONFIG = {
     PRIORITY_TESTS = {
         "test1",
-       -- "test2",
+        "test2",
     },
-    ONLY_RUN_PRIORITY_TESTS = true,
+    ONLY_RUN_PRIORITY_TESTS = false,
 }
 local GameplayTests = {
     test3 = test3,

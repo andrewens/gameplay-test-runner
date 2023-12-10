@@ -74,9 +74,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		if OrderedTests[testName] then
 			return
 		end
-        local i = #GameplayTestOrder + 1
-        GameplayTestOrder[i] = testName
-        OrderedTests[testName] = i
+		local i = #GameplayTestOrder + 1
+		GameplayTestOrder[i] = testName
+		OrderedTests[testName] = i
 	end
 	local function saveTestFunction(testName, testFunction)
 		--[[
@@ -159,39 +159,54 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
-    local function nextStep()
-        -- move onto next test if current one is finished
-        if coroutine.status(TestThreads[testIndex]) == "dead" then
-            testIndex += 1
-            if testIndex > #GameplayTestOrder then
-                return
-            end
-        end
+	local function nextStep()
+		-- don't do anything if we ran out of gameplay tests
+		if testIndex > #GameplayTestOrder then
+			Console.output("\n\nNo more gameplay tests!\n")
+			return
+		end
 
-        coroutine.resume(TestThreads[testIndex], TestConsole)
-    end
+		-- move onto next test if current one is finished
+		if coroutine.status(TestThreads[testIndex]) == "dead" then
+			testIndex += 1
+			Console.clear()
+
+			-- don't do anything if we ran out of gameplay tests
+			if testIndex > #GameplayTestOrder then
+				Console.output("\n\nNo more gameplay tests!\n")
+				return
+			end
+		end
+
+		coroutine.resume(TestThreads[testIndex])
+	end
 
 	-- init
 	extractGameplayTests()
 	Console = Terminal(ScrollingFrame, {
-        n = nextStep,
-        next = nextStep,
-    })
+		n = nextStep,
+		next = nextStep,
+	})
 	TestRunnerMaid(Console)
 
-    -- threads
-    for i, testName in GameplayTestOrder do
-        local testFunction = GameplayTestFunctions[testName]
-        TestThreads[i] = coroutine.create(testFunction)
-    end
+	-- threads
+	for i, testName in GameplayTestOrder do
+		local testFunction = GameplayTestFunctions[testName]
+		TestThreads[i] = coroutine.create(function()
+			Console.clear()
+			Console.output("\n" .. 'Begin test "' .. testName .. '"\n')
+			testFunction(TestConsole)
+			Console.output('\nEnd test "' .. testName .. '"\n')
+		end)
+	end
 
 	--[[
         next -->
     ]]
 	local function ask(prompt)
-        Console.output("\n" .. prompt)
-        coroutine.yield()
-    end
+		Console.output("\n\n" .. prompt .. "\n")
+		coroutine.yield()
+	end
 	local function output(text)
 		return Console.output("\n" .. text)
 	end

@@ -8,7 +8,10 @@ tracking what works/doesn't for effective test-driven development.
 *Built using Rojo*
 
 ### TODO
-* Test control flow (TestConsole.ask, TestConsole.output)
+* ~~Test control flow (TestConsole.ask, TestConsole.output)~~
+  * ~~Step between questions (coroutine.yield/resume)~~
+  * ~~Test header & footer~~
+  * ~~Clear output when starting a new test~~
 * Command line prompt changes per test; PlayerName/Test X>
 * Go to previous & next test
 * View test state summary page
