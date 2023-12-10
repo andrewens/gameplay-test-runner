@@ -13,6 +13,9 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Maid = require(script.Parent:FindFirstChild("Maid"))
 
+-- const
+local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
+
 -- public
 return function(ScrollingFrame, Commands)
 	--[[
@@ -36,7 +39,7 @@ return function(ScrollingFrame, Commands)
 
 	local readOnlyText = ""
 	local readOnlyLength = 0
-	local commandLineText = "\n" .. LocalPlayer.Name .. ">"
+	local commandLineText = "\n" .. DEFAULT_COMMAND_LINE_PROMPT
 
 	-- private
 	local function resizeTextBox()
@@ -217,6 +220,20 @@ return function(ScrollingFrame, Commands)
 		exitFlag = true -- this tells Console.command(...) not to output the error message
 		error("Exited")
 	end
+	local function setCommandLinePrompt(text)
+		--[[
+            		@param: nil | string text
+                		- If nil, will reset to default.
+            		@post: The text before entering a command, e.g. "Rockraider400>" will be changed
+        	]]
+
+		text = text or DEFAULT_COMMAND_LINE_PROMPT
+
+		if typeof(text) ~= "string" then
+			error(tostring(text) .. " isn't a string! It's a " .. typeof(text))
+		end
+		commandLineText = "\n" .. text
+	end
 
 	-- initialize the terminal
 	TerminalMaid(ThreadMaid)
@@ -246,6 +263,7 @@ return function(ScrollingFrame, Commands)
 		initialize = initialize,
 		terminate = terminate,
 		exit = exit,
+		setCommandLinePrompt = setCommandLinePrompt,
 
 		TextBox = TextBox,
 	}

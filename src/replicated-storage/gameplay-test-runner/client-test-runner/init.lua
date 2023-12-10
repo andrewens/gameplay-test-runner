@@ -1,6 +1,9 @@
 -- dependency
+local Players = game:GetService("Players")
 local Terminal = require(script:FindFirstChild("Terminal"))
 local Maid = require(script:FindFirstChild("Maid"))
+
+local LocalPlayer = Players.LocalPlayer
 
 -- const
 local DEFAULT_CONFIG = {
@@ -189,20 +192,20 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	})
 	TestRunnerMaid(Console)
 
-	-- threads
+	-- create a thread per test function
 	for i, testName in GameplayTestOrder do
 		local testFunction = GameplayTestFunctions[testName]
 		TestThreads[i] = coroutine.create(function()
 			Console.clear()
 			Console.output("\n" .. 'Begin test "' .. testName .. '"\n')
+			Console.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
 			testFunction(TestConsole)
 			Console.output('\nEnd test "' .. testName .. '"\n')
+			Console.setCommandLinePrompt() -- defaults to PlayerName>
 		end)
 	end
 
-	--[[
-        next -->
-    ]]
+	-- wrap Console for giving to gameplay test functions as "TestConsole"
 	local function ask(prompt)
 		Console.output("\n\n" .. prompt .. "\n")
 		coroutine.yield()
@@ -216,6 +219,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	}
 	setmetatable(TestConsole, { __index = Console })
 
+	-- init
 	Console.initialize("next")
 
 	return TestRunnerMaid
