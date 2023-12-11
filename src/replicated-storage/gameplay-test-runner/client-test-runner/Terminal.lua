@@ -11,7 +11,7 @@
 -- dependency
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local Maid = require(script.Parent:FindFirstChild("Maid"))
+local Maid = require(script.Parent.Parent:FindFirstChild("Maid"))
 
 -- const
 local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"

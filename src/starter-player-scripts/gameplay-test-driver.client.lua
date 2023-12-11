@@ -19,6 +19,9 @@ local CONFIG = {
         "test2",
     },
     ONLY_RUN_PRIORITY_TESTS = false,
+    TEST_NAME_TO_SERVER_INITIALIZER = {
+        ["test3"] = "test2", -- this means that test3 reuses the same server code as test2
+    }
 }
 local GameplayTests = {
     test3 = test3,

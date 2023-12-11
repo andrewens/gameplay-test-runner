@@ -6,7 +6,7 @@ local GameplayTestRunner = require(ReplicatedStorage:FindFirstChild("gameplay-te
 
 -- private
 local function test2()
-	print("Hello world x2")
+	print("Test initializer #2")
 end
 
 -- init
@@ -14,4 +14,4 @@ local ServerTestInitializers = {
     ServerTestInitializersFolder,
     test2 = test2
 }
-local ServerTests = GameplayTestRunner(ServerTestInitializers)
+GameplayTestRunner.initialize(ServerTestInitializers)

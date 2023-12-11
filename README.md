@@ -17,7 +17,7 @@ It's all through a Command Line Interface, btw.
 * ~~Support yes/no responses from "ask"~~ `Dec 11, 2023`
 * ~~View test state summary page~~ `Dec 11, 2023`
 * ~~Allow user to change color of text~~ `Dec 11, 2023`
-* Support running server code per test
+* ~~Support running server code per test~~ `Dec 11, 2023`
 * Browse all test results from database
 * Option to restart a test
 * Auto-start the gameplay test on entry

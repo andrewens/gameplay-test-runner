@@ -1,9 +1,12 @@
 -- dependency
 local Players = game:GetService("Players")
-local Terminal = require(script:FindFirstChild("Terminal"))
-local Maid = require(script:FindFirstChild("Maid"))
-
 local LocalPlayer = Players.LocalPlayer
+
+local Terminal = require(script:FindFirstChild("Terminal"))
+local Maid = require(script.Parent:FindFirstChild("Maid"))
+
+local RemoteEvents = script.Parent:FindFirstChild("remote-events")
+local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -24,7 +27,7 @@ local DEFAULT_TEXT_COLORS = {
 	daffodil = Color3.fromRGB(255, 255, 150),
 	white = Color3.new(1, 1, 1),
 
-	-- trash colors
+	-- simple colors
 	green = Color3.new(0, 1, 0),
 	blue = Color3.new(0, 0, 1),
 	red = Color3.new(1, 0, 0),
@@ -202,7 +205,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local text = "\n" .. commandLineText .. commandName
 		TestOutputs[testIndex] = (TestOutputs[testIndex] or "") .. text
 	end
-	local function redrawCurrentTestOutput()
+	local function redrawCurrentTest()
 		--[[
 			@post: clear screen & output current test's output log
 		]]
@@ -210,49 +213,78 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		Console.clear()
 		Console.output(TestOutputs[testIndex])
 	end
+	local function setTestIndex(_, newTestIndex)
+		--[[
+			@param: Console (unnecessary)
+			@param: string newTestIndex
+				- You can increment/decrement from command line by prepending a "+" or "-":
+				- e.g. "+2", "-3", etc
+			@post: updates testIndex, outputs current test log, resumes test thread
+		]]
+
+		-- turn newTestIndex into an actual integer representing a test
+		if string.sub(newTestIndex, 1, 1) == "+" then
+			-- support symbolic incrementing
+			newTestIndex = testIndex + tonumber(string.sub(newTestIndex, 2, -1))
+		elseif string.sub(newTestIndex, 1, 1) == "-" then
+			-- support symbolic decrementing
+			newTestIndex = testIndex - tonumber(string.sub(newTestIndex, 2, -1))
+		else
+			-- default rawsetting index behavior
+			if tonumber(newTestIndex) == nil then
+				error(tostring(newTestIndex) .. " isn't a number! It's a " .. typeof(newTestIndex))
+			end
+			newTestIndex = math.floor(tonumber(newTestIndex))
+		end
+
+		-- check bounds of newTestIndex (RETURNS)
+		if newTestIndex > #GameplayTestOrder or newTestIndex < 1 then
+			Console.output("\n\nThere is no Test #" .. tostring(newTestIndex) .. "\n")
+			return
+		end
+
+		-- switch the test
+		testIndex = newTestIndex
+		redrawCurrentTest()
+
+		-- ask server to initialize whatever it needs to for this test
+		local clientTestName = GameplayTestOrder[testIndex] -- this nonsense VVV allows us to reuse a server function per multiple client tests
+		local serverTestName = TEST_NAME_TO_SERVER_INITIALIZER[clientTestName] or clientTestName
+		InitializeGameplayTestRemote:InvokeServer(serverTestName)
+
+		-- resume test thread if it isn't finished
+		if coroutine.status(TestThreads[testIndex]) == "dead" then
+			TestConsole.setCommandLinePrompt()
+			return
+		end
+		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
+		if TestOutputs[testIndex] == nil then
+			-- we only need to resume if the test thread hasn't been initialized yet
+			coroutine.resume(TestThreads[testIndex])
+		end
+	end
 	local function nextTest()
 		--[[
 			@post: moves onto next gameplay test (testIndex += 1)
 		]]
 
+		-- display cheeky message if we're at the end of the tests
 		if testIndex >= #GameplayTestOrder then
 			Console.output("\n\n" .. END_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
-
-		testIndex += 1
-		redrawCurrentTestOutput()
-
-		if coroutine.status(TestThreads[testIndex]) == "dead" then
-			TestConsole.setCommandLinePrompt()
-			return
-		end
-		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
-		if TestOutputs[testIndex] == nil then
-			coroutine.resume(TestThreads[testIndex])
-		end
+		setTestIndex(nil, "+1")
 	end
 	local function prevTest()
 		--[[
 			@post: moves back to previous gameplay test (testIndex -= 1)
 		]]
-
+		-- display cheeky message if we're at the very beginning of the tests
 		if testIndex <= 1 then
 			Console.output("\n\n" .. BEGINNING_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
-
-		testIndex -= 1
-		redrawCurrentTestOutput()
-
-		if coroutine.status(TestThreads[testIndex]) == "dead" then
-			TestConsole.setCommandLinePrompt()
-			return
-		end
-		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
-		if TestOutputs[testIndex] == nil then
-			coroutine.resume(TestThreads[testIndex])
-		end
+		setTestIndex(nil, "-1")
 	end
 	local function nextStep(_, response)
 		--[[
@@ -286,7 +318,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		-- move onto next test if current one is finished
 		if coroutine.status(TestThreads[testIndex]) == "dead" then
-			nextTest()
+			setTestIndex(nil, "+1") -- go onto next test
 			return
 		end
 
@@ -301,13 +333,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		--[[
 			@post: gives a "yes" response to the last ask and resumes next step in current test
 		]]
-		nextStep(TestConsole, true)
+		nextStep(nil, true)
 	end
 	local function no()
 		--[[
 			@post: gives a "no" response to the last ask and resumes next step in current test
 		]]
-		nextStep(TestConsole, false)
+		nextStep(nil, false)
 	end
 	local function viewSummary()
 		--[[
@@ -360,7 +392,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		]]
 		if viewingSummary then
 			-- exit summary view
-			redrawCurrentTestOutput()
+			redrawCurrentTest()
 		else
 			prevTest()
 		end
@@ -409,10 +441,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		)
 	end
 	local TestCommands = {
+		-- responses to "ask" questions
 		yes = yes,
 		y = yes,
 		yeah = yes,
 		ya = yes,
+		yah = yes,
+		yahh = yes,
 		yep = yes,
 		yesh = yes,
 		yus = yes,
@@ -420,6 +455,12 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		affirmative = yes,
 		mhm = yes,
 		ye = yes,
+		yuh = yes,
+		yuhh = yes,
+		yuhhh = yes,
+		yuhhhh = yes,
+		yuhhhhh = yes,
+		yuhhhhhh = yes,
 
 		no = no,
 		n = no,
@@ -433,6 +474,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		nextstep = nextStep,
 		step = nextStep,
 		ok = nextStep,
+
+		-- navigating tests/summary
+		test = setTestIndex,
+		goto = setTestIndex,
+		go = setTestIndex,
+		number = setTestIndex,
+		["#"] = setTestIndex,
 
 		ne = nextTest,
 		next = nextTest,
@@ -451,8 +499,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		sumsum = viewSummary,
 		status = viewSummary,
 
-		clear = redrawCurrentTestOutput,
-		redraw = redrawCurrentTestOutput,
+		-- redrawing the screen
+		c = redrawCurrentTest,
+		clear = redrawCurrentTest,
+		redraw = redrawCurrentTest,
 
 		-- text colors
 		setcolor = setTextColor,
@@ -464,6 +514,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		colors = viewTextColors,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
+		-- every default text color is a command
+		-- beware of collisions!
 		TestCommands[textColor] = function()
 			setTextColor(nil, textColor)
 		end
@@ -526,13 +578,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local testFunction = GameplayTestFunctions[testName]
 		TestThreads[i] = coroutine.create(function()
 			TestConsole.clear()
-			TestConsole.output("\nBEGIN TEST #" .. tostring(i) .. ', "' .. testName .. '"\n')
+			TestConsole.output("\nBEGIN TEST #" .. tostring(i) .. ' "' .. testName .. '"\n')
 			TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
 			testFunction(TestConsole)
 			TestConsole.output(
 				"\nFINISHED TEST #"
 					.. tostring(i)
-					.. ', "'
+					.. ' "'
 					.. testName
 					.. '"\nPASSED '
 					.. tostring(TestStatusPassing[i])
@@ -542,6 +594,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 					.. if i < #GameplayTestOrder then '\nType "next" (without quotes) to continue.\n' else ""
 			)
 			TestConsole.setCommandLinePrompt() -- defaults to PlayerName>
+
+			if i >= #GameplayTestOrder then
+				TestConsole.output("\nThis is the last gameplay test. Type \"summary\" (without quotes) to see your results.\n")
+			end
 		end)
 	end
 
