@@ -14,6 +14,7 @@ It's all through a Command Line Interface, btw.
   * ~~Clear output when starting a new test~~
 * ~~Command line prompt changes per test; PlayerName/Test X>~~ `Dec 10, 2023`
 * ~~Go to previous & next test~~ `Dec 10, 2023`
+* ~~Support yes/no responses from "ask"~~ `Dec 11, 2023`
 * View test state summary page
 * Support running server code per test
 * Browse all test results from database

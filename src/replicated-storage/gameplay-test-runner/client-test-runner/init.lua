@@ -15,6 +15,16 @@ local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
 local BEGINNING_OF_TESTS_MESSAGE = "You're already at the first test >:^("
 
+-- private
+local function testHeaderMessage(testIndex, testName)
+	-- @return: string
+	return 'Beginning test "' .. testName .. '"'
+end
+local function testFooterMessage(testIndex, testName)
+	-- @return: string
+	return 'End test "' .. testName
+end
+
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
 	--[[
@@ -65,6 +75,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local testIndex = 1
 	local TestThreads = {} -- int i --> thread of GameplayTestFunctions[i]
 	local TestOutputs = {} -- int i --> string outputLog (everything ever outputted during the test)
+	local userResponse -- a yes/no answer to an "ask" question in a gameplay test
 
 	-- private
 	local function saveTestName(testName)
@@ -223,11 +234,19 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			coroutine.resume(TestThreads[testIndex])
 		end
 	end
-	local function nextStep()
+	local function nextStep(_, response)
 		--[[
+			@param: Console (this is how Terminal passes args to command functions -- we don't need it in this case.)
+			@param: boolean | string response
 			@post: runs current gameplay test until next "ask" prompt
 			@post: if at end of current test, moves onto next test
 		]]
+
+		-- convert response to boolean in case of use by command line
+		-- idk why i care about this tbh
+		if typeof(response) ~= "boolean" then
+			response = response == "yes"
+		end
 
 		-- don't do anything if we ran out of gameplay tests
 		if testIndex > #GameplayTestOrder then
@@ -242,19 +261,49 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		-- actually run the next step of the test
-		logCommand("ok")
+		userResponse = response
+		logCommand(if response then "yes" else "no")
+
 		TestConsole.output()
 		coroutine.resume(TestThreads[testIndex])
+	end
+	local function yes()
+		nextStep(TestConsole, true)
+	end
+	local function no()
+		nextStep(TestConsole, false)
 	end
 
 	extractGameplayTests()
 	Console = Terminal(ScrollingFrame, {
-		ok = nextStep,
-		step = nextStep,
-		s = nextStep,
+		yes = yes,
+		y = yes,
+		yeah = yes,
+		ya = yes,
+		yep = yes,
+		yesh = yes,
+		yus = yes,
+		yas = yes,
+		affirmative = yes,
+		mhm = yes,
+		ye = yes,
 
-		n = nextTest,
+		no = no,
+		n = no,
+		nah = no,
+		nope = no,
+		negative = no,
+		idk = no,
+		noe = no,
+		nop = no,
+
+		["next-step"] = nextStep,
+		nextstep = nextStep,
+		step = nextStep,
+		ok = nextStep,
+
 		next = nextTest,
+		skip = nextTest,
 
 		p = prevTest,
 		prev = prevTest,
@@ -271,25 +320,45 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local testFunction = GameplayTestFunctions[testName]
 		TestThreads[i] = coroutine.create(function()
 			TestConsole.clear()
-			TestConsole.output("\n" .. 'Begin test "' .. testName .. '"\n')
+			TestConsole.output("\n" .. testHeaderMessage(i, testName) .. "\n")
 			TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
 			testFunction(TestConsole)
-			TestConsole.output('\nEnd test "' .. testName .. '"\n')
+			TestConsole.output(
+				"\n"
+					.. testFooterMessage(i, testName)
+					.. "\n"
+					.. if i < #GameplayTestOrder then 'Type "next" (without quotes) to go to the next test.\n' else ""
+			)
 			TestConsole.setCommandLinePrompt() -- defaults to PlayerName>
 		end)
 	end
 
 	-- wrap Console for giving to gameplay test functions as "TestConsole"
 	local function output(text)
+		--[[
+			@param: string text
+			@post: outputs to Console
+			@post: saves text to the test's output log (TestOutputs[testIndex])
+		]]
 		text = "\n" .. (text or "")
 		TestOutputs[testIndex] = (TestOutputs[testIndex] or "") .. text
 		return Console.output(text)
 	end
 	local function ask(prompt)
+		--[[
+			@param: string prompt
+			@return: bool userResponse (i.e. the user says yes or they say no)
+		]]
+		userResponse = nil
 		output(prompt .. "\n")
 		coroutine.yield()
+		return userResponse
 	end
 	local function setCommandLinePrompt(text)
+		--[[
+			@param: string text
+			@post: saves commandLineText for when we save user commands to the test log
+		]]
 		commandLineText = text or DEFAULT_COMMAND_LINE_PROMPT
 		Console.setCommandLinePrompt(commandLineText)
 	end
@@ -301,7 +370,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	setmetatable(TestConsole, { __index = Console })
 
 	-- automatically begin running tests
-	Console.initialize("ok")
+	Console.initialize("nextstep")
 
 	-- this object exposes Terminal's TextBox and
 	-- allows you to destroy the whole thing
