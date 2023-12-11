@@ -15,6 +15,26 @@ local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
 local BEGINNING_OF_TESTS_MESSAGE = "You're already at the first test >:^("
 
+local DEFAULT_TEXT_COLORS = {
+	-- good colors
+	jade = Color3.fromRGB(123, 245, 123),
+	rust = Color3.fromRGB(255, 123, 123),
+	seashell = Color3.fromRGB(200, 255, 255),
+	pink = Color3.fromRGB(255, 200, 255),
+	daffodil = Color3.fromRGB(255, 255, 150),
+	white = Color3.new(1, 1, 1),
+
+	-- trash colors
+	green = Color3.new(0, 1, 0),
+	blue = Color3.new(0, 0, 1),
+	red = Color3.new(1, 0, 0),
+	cyan = Color3.new(0, 1, 1),
+	yellow = Color3.new(1, 1, 0),
+	magenta = Color3.new(1, 0, 1),
+	black = Color3.new(0.1, 0.1, 0.1),
+	grey = Color3.new(0.5, 0.5, 0.5),
+}
+
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
 	--[[
@@ -345,6 +365,49 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			prevTest()
 		end
 	end
+	local function setTextColor(_, r, g, b)
+		--[[
+			@param: Console (we don't need it)
+			@param: string color
+		]]
+
+		-- support picking color by name (RETURNS)
+		if tonumber(r) == nil then
+			Console.TextBox.TextColor3 = DEFAULT_TEXT_COLORS[r]
+			return
+		end
+
+		-- support specifying a raw RGB value
+		Console.TextBox.TextColor3 = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))
+	end
+	local function viewTextColors(_)
+		--[[
+			@post: prints all default text colors to screen
+		]]
+
+		Console.output("\n\nDEFAULT TEXT COLORS\n")
+
+		local longestColorName = 0 -- this is an int, sorry for bad naming convention
+		for colorName, _ in DEFAULT_TEXT_COLORS do
+			longestColorName = math.max(longestColorName, string.len(colorName))
+		end
+
+		for colorName, value in DEFAULT_TEXT_COLORS do
+			Console.output(
+				"\n "
+					.. colorName
+					.. string.rep(" ", longestColorName - string.len(colorName) + 2)
+					.. math.floor(255 * value.R)
+					.. " "
+					.. math.floor(255 * value.G)
+					.. " "
+					.. math.floor(255 * value.B)
+			)
+		end
+		Console.output(
+			'\n\nType any color name to change the terminal text. For example, try "green" (without quotes).\n'
+		)
+	end
 	local TestCommands = {
 		yes = yes,
 		y = yes,
@@ -390,7 +453,21 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		clear = redrawCurrentTestOutput,
 		redraw = redrawCurrentTestOutput,
+
+		-- text colors
+		setcolor = setTextColor,
+		textcolor = setTextColor,
+		text = setTextColor,
+		color = setTextColor,
+
+		palette = viewTextColors,
+		colors = viewTextColors,
 	}
+	for textColor, _ in DEFAULT_TEXT_COLORS do
+		TestCommands[textColor] = function()
+			setTextColor(nil, textColor)
+		end
+	end
 
 	-- wrap Console for giving to gameplay test functions as "TestConsole"
 	local function output(text)
