@@ -15,16 +15,6 @@ local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
 local BEGINNING_OF_TESTS_MESSAGE = "You're already at the first test >:^("
 
--- private
-local function testHeaderMessage(testIndex, testName)
-	-- @return: string
-	return 'Beginning test "' .. testName .. '"'
-end
-local function testFooterMessage(testIndex, testName)
-	-- @return: string
-	return 'End test "' .. testName
-end
-
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
 	--[[
@@ -72,12 +62,16 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local TestConsole -- TestConsole wraps Console, allowing for convenience
 	local commandLineText = DEFAULT_COMMAND_LINE_PROMPT
 
-	local testIndex = 1
+	local testIndex = 0
 	local TestThreads = {} -- int i --> thread of GameplayTestFunctions[i]
 	local TestOutputs = {} -- int i --> string outputLog (everything ever outputted during the test)
 	local userResponse -- a yes/no answer to an "ask" question in a gameplay test
 
-	-- private
+	local viewingSummary = false
+	local TestStatusPassing = {} -- int i --> int number of "yes" responses per test
+	local TestStatusFailing = {} -- int i --> int number of "no" responses per test
+
+	-- private | compile gameplay tests from parameters
 	local function saveTestName(testName)
 		--[[
             @post: assigns test to next spot in GameplayTestOrder
@@ -178,12 +172,24 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
+	-- public | define commands for CLI
 	local function logCommand(commandName)
+		--[[
+			@param: string commandName
+			@post: saves user command to current test's output log
+			(this is actually a private method but it's only for the TestCommands so...)
+		]]
 		local text = "\n" .. commandLineText .. commandName
 		TestOutputs[testIndex] = (TestOutputs[testIndex] or "") .. text
 	end
-
-	-- public | define commands for CLI
+	local function redrawCurrentTestOutput()
+		--[[
+			@post: clear screen & output current test's output log
+		]]
+		viewingSummary = false
+		Console.clear()
+		Console.output(TestOutputs[testIndex])
+	end
 	local function nextTest()
 		--[[
 			@post: moves onto next gameplay test (testIndex += 1)
@@ -195,16 +201,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		testIndex += 1
-		Console.clear()
-		Console.output(TestOutputs[testIndex])
+		redrawCurrentTestOutput()
 
 		if coroutine.status(TestThreads[testIndex]) == "dead" then
 			TestConsole.setCommandLinePrompt()
 			return
 		end
-
 		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
-
 		if TestOutputs[testIndex] == nil then
 			coroutine.resume(TestThreads[testIndex])
 		end
@@ -220,16 +223,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		testIndex -= 1
-		Console.clear()
-		Console.output(TestOutputs[testIndex])
+		redrawCurrentTestOutput()
 
 		if coroutine.status(TestThreads[testIndex]) == "dead" then
 			TestConsole.setCommandLinePrompt()
 			return
 		end
-
 		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
-
 		if TestOutputs[testIndex] == nil then
 			coroutine.resume(TestThreads[testIndex])
 		end
@@ -246,6 +246,16 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- idk why i care about this tbh
 		if typeof(response) ~= "boolean" then
 			response = response == "yes"
+		end
+
+		-- don't do anything if viewing summary!
+		if viewingSummary then
+			if response then
+				Console.output("\n\nYes to what exactly??\n")
+			else
+				Console.output("\n\nWhat are you talking about??\n")
+			end
+			return
 		end
 
 		-- don't do anything if we ran out of gameplay tests
@@ -268,14 +278,74 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		coroutine.resume(TestThreads[testIndex])
 	end
 	local function yes()
+		--[[
+			@post: gives a "yes" response to the last ask and resumes next step in current test
+		]]
 		nextStep(TestConsole, true)
 	end
 	local function no()
+		--[[
+			@post: gives a "no" response to the last ask and resumes next step in current test
+		]]
 		nextStep(TestConsole, false)
 	end
+	local function viewSummary()
+		--[[
+			@post: draws summary of all test status (passing/failing) to screen
+		]]
+		viewingSummary = true
+		Console.clear()
+		TestConsole.setCommandLinePrompt()
 
-	extractGameplayTests()
-	Console = Terminal(ScrollingFrame, {
+		-- summarize test status
+		local TestStatus = {}
+		local numPassingTests = 0
+
+		for i, testName in GameplayTestOrder do
+			if coroutine.status(TestThreads[i]) == "dead" then
+				local n = TestStatusPassing[i] + TestStatusFailing[i]
+				TestStatus[i] = " ("
+					.. tostring(TestStatusPassing[i])
+					.. "/"
+					.. tostring(n)
+					.. ") "
+					.. if TestStatusFailing[i] > 0 then "[FAILING]" else "[PASSING]"
+
+				if TestStatusFailing[i] <= 0 then
+					numPassingTests += 1
+				end
+			elseif TestStatusPassing[i] > 0 or TestStatusFailing[i] > 0 then
+				TestStatus[i] = " (IN-PROGRESS)"
+			end
+
+			if testIndex == i then
+				TestStatus[i] = (TestStatus[i] or "") .. " <-- current"
+			end
+		end
+
+		-- draw summary to screen
+		Console.output("\nTEST SUMMARY\n")
+		Console.output(
+			"\n" .. tostring(numPassingTests) .. " PASSING OUT OF " .. tostring(#GameplayTestOrder) .. " TESTS\n"
+		)
+		for i, testName in GameplayTestOrder do
+			Console.output("\n#" .. tostring(i) .. " " .. testName .. (TestStatus[i] or ""))
+		end
+		Console.output('\n\nType "back" (without quotes) to continue.\n')
+	end
+	local function back()
+		--[[
+			@post: if viewing summary, simply exits summary.
+			@post: otherwise, goes to previous test
+		]]
+		if viewingSummary then
+			-- exit summary view
+			redrawCurrentTestOutput()
+		else
+			prevTest()
+		end
+	end
+	local TestCommands = {
 		yes = yes,
 		y = yes,
 		yeah = yes,
@@ -297,41 +367,30 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		noe = no,
 		nop = no,
 
-		["next-step"] = nextStep,
 		nextstep = nextStep,
 		step = nextStep,
 		ok = nextStep,
 
+		ne = nextTest,
 		next = nextTest,
 		skip = nextTest,
 
 		p = prevTest,
 		prev = prevTest,
 		previous = prevTest,
-		back = prevTest,
 
-		-- disable clearing behavior
-		clear = function() end,
-	})
-	TestRunnerMaid(Console)
+		back = back,
+		b = back,
 
-	-- create a thread per test function
-	for i, testName in GameplayTestOrder do
-		local testFunction = GameplayTestFunctions[testName]
-		TestThreads[i] = coroutine.create(function()
-			TestConsole.clear()
-			TestConsole.output("\n" .. testHeaderMessage(i, testName) .. "\n")
-			TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
-			testFunction(TestConsole)
-			TestConsole.output(
-				"\n"
-					.. testFooterMessage(i, testName)
-					.. "\n"
-					.. if i < #GameplayTestOrder then 'Type "next" (without quotes) to go to the next test.\n' else ""
-			)
-			TestConsole.setCommandLinePrompt() -- defaults to PlayerName>
-		end)
-	end
+		summary = viewSummary,
+		s = viewSummary,
+		sum = viewSummary,
+		sumsum = viewSummary,
+		status = viewSummary,
+
+		clear = redrawCurrentTestOutput,
+		redraw = redrawCurrentTestOutput,
+	}
 
 	-- wrap Console for giving to gameplay test functions as "TestConsole"
 	local function output(text)
@@ -352,6 +411,12 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		userResponse = nil
 		output(prompt .. "\n")
 		coroutine.yield()
+
+		if userResponse then
+			TestStatusPassing[testIndex] += 1
+		else
+			TestStatusFailing[testIndex] += 1
+		end
 		return userResponse
 	end
 	local function setCommandLinePrompt(text)
@@ -367,10 +432,45 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		output = output,
 		setCommandLinePrompt = setCommandLinePrompt,
 	}
+
+	-- init
+	extractGameplayTests()
+	Console = Terminal(ScrollingFrame, TestCommands)
+	TestRunnerMaid(Console)
 	setmetatable(TestConsole, { __index = Console })
 
+	-- create a thread per test function
+	for i, testName in GameplayTestOrder do
+		-- init question summary
+		TestStatusPassing[i] = 0
+		TestStatusFailing[i] = 0
+
+		-- init test fn. thread
+		local testFunction = GameplayTestFunctions[testName]
+		TestThreads[i] = coroutine.create(function()
+			TestConsole.clear()
+			TestConsole.output("\nBEGIN TEST #" .. tostring(i) .. ', "' .. testName .. '"\n')
+			TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
+			testFunction(TestConsole)
+			TestConsole.output(
+				"\nFINISHED TEST #"
+					.. tostring(i)
+					.. ', "'
+					.. testName
+					.. '"\nPASSED '
+					.. tostring(TestStatusPassing[i])
+					.. " OUT OF "
+					.. tostring(TestStatusPassing[i] + TestStatusFailing[i])
+					.. " QUESTIONS\n"
+					.. if i < #GameplayTestOrder then '\nType "next" (without quotes) to continue.\n' else ""
+			)
+			TestConsole.setCommandLinePrompt() -- defaults to PlayerName>
+		end)
+	end
+
 	-- automatically begin running tests
-	Console.initialize("nextstep")
+	nextTest()
+	Console.initialize()
 
 	-- this object exposes Terminal's TextBox and
 	-- allows you to destroy the whole thing
