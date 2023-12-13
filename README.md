@@ -20,16 +20,17 @@ It's all through a Command Line Interface, btw.
 * ~~Allow user to change color of text~~ `Dec 11, 2023`
 * ~~Support running server code per test~~ `Dec 11, 2023`
 * Browse other users' test results from database
-  * Save test on exit
+  * ~~Save test on exit~~ `Dec 13, 2023`
     * ~~Assign test id on beginning~~ `Dec 13, 2023`
   * Browse all sessions
   * Browse summary of a session
   * Browse individual tests of a session
+* ~~Organize test database by place version, or date~~ `Dec 13, 2023`
 * Option to restart a test
 * Help command
 * Support player leaving comments
-* Organize test database by place version, or date
 * Support returning Maid tasks from server test initializers
+* Dump error messages in test output (?)
 
 * Redefine the interface (and Terminal's interface) to just directly 
   interact with GUI properties as if it were another ROBLOX GUI instance

@@ -8,6 +8,10 @@
     {
       "ClassName": "RemoteFunction",
       "Name": "GetSessionId"
+    },
+    {
+        "ClassName": "RemoteFunction",
+        "Name": "GetSessionTimestamp"
     }
   ]
 }

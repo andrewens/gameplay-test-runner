@@ -6,8 +6,9 @@ local Maid = require(script.Parent:FindFirstChild("Maid"))
 local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
 local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
+local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
 
-local TestSessionTimestampsStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
+local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
 local TestSessionStore = DataStoreService:GetGlobalDataStore("TestSessions")
 
 -- const
@@ -26,6 +27,15 @@ local sessionId -- unique integer index of this game/test session for use in dat
 ]]
 
 -- private
+local function sessionKey(anySessionId)
+	--[[
+		@return: string formattedSessionKey
+			- Used for indexing database for a given session
+		@param: int sessionId
+	]]
+	assert(typeof(anySessionId) == "number" and math.floor(anySessionId) == anySessionId)
+	return "session_" .. tostring(anySessionId)
+end
 local function getNewSessionId(maxSessionId)
 	--[[
 		Callback for TestSessionStore:UpdateAsync(MAX_SESSION_ID_DATASTORE_KEY, ...)
@@ -37,6 +47,19 @@ local function getNewSessionId(maxSessionId)
 		return maxSessionId + 1
 	end
 	return 1
+end
+local function disconnectRemoteFunction(RemoteFunction)
+	--[[
+		@param: Instance RemoteFunction
+		@return: function that "disconnects" the RemoteFunction
+			- it sets to an empty function to avoid yielding the client
+				if for some reason the client still invokes these remotes
+			- this method simplifies writing Maid tasks for disconnecting
+				remote functions
+	]]
+	return function()
+		RemoteFunction.OnServerInvoke = function() end
+	end
 end
 
 -- public
@@ -125,15 +148,14 @@ local function initialize(TestInitializers)
 		-- sanity check
 		error(tostring(TestInitializers) .. " is not a table or function! It's a " .. typeof(TestInitializers))
 	end
-	ServerMaid(function()
-		InitializeGameplayTestRemote.OnServerInvoke = function() end -- avoid yielding on client
-	end)
+	ServerMaid(disconnectRemoteFunction(InitializeGameplayTestRemote))
 
 	-- assign a unique id for this session for the database
 	if sessionId == nil then
 		local s, newSessionId
 		for tries = 1, 3 do
-			s, newSessionId = pcall(TestSessionStore.UpdateAsync, TestSessionStore, MAX_SESSION_ID_DATASTORE_KEY, getNewSessionId)
+			s, newSessionId =
+				pcall(TestSessionStore.UpdateAsync, TestSessionStore, MAX_SESSION_ID_DATASTORE_KEY, getNewSessionId)
 			if s then
 				sessionId = newSessionId
 				break
@@ -148,16 +170,40 @@ local function initialize(TestInitializers)
 	GetSessionIdRemote.OnServerInvoke = function(...)
 		return sessionId
 	end
+	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
+
+	-- support client browsing the timestamp of a given session
+	GetSessionTimestampRemote.OnServerInvoke = function(Player, anySessionId)
+		return TestSessionTimestampStore:GetAsync(sessionKey(anySessionId))
+	end
+	ServerMaid(disconnectRemoteFunction(GetSessionTimestampRemote))
+
+	-- save test upon terminate()
 	ServerMaid(function()
-		GetSessionIdRemote.OnServerInvoke = function() end -- avoid yielding on client
+		local timestamp = os.time()
+
+		-- save timestamp to an ordered datastore for browsing tests in chronological order
+		local s, msg
+		for tries = 1, 3 do
+			s, msg =
+				pcall(TestSessionTimestampStore.SetAsync, TestSessionTimestampStore, sessionKey(sessionId), timestamp)
+			if s then
+				break
+			end
+			task.wait(1)
+		end
+		if not s then
+			error("Failed to save test (session id: " .. tostring(sessionId) .. ")\n" .. tostring(msg))
+		end
 	end)
 
 	return ServerMaid
 end
 
 -- init
-InitializeGameplayTestRemote.OnServerInvoke = function() end -- avoid yielding on client
-GetSessionIdRemote.OnServerInvoke = function() end
+disconnectRemoteFunction(InitializeGameplayTestRemote)()
+disconnectRemoteFunction(GetSessionIdRemote)()
+disconnectRemoteFunction(GetSessionTimestampRemote)()
 game:BindToClose(terminate)
 
 return {

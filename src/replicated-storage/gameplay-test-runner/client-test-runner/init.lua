@@ -8,6 +8,7 @@ local Maid = require(script.Parent:FindFirstChild("Maid"))
 local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
 local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
+local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -453,11 +454,48 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	-- public | database commands
 	local function printSessionId()
 		--[[
-			@post: 
+			@post: outputs the current session id to Console
 		]]
 		local sessionId = GetSessionIdRemote:InvokeServer()
-		Console.output("\nYour session id: " .. tostring(sessionId))
+		Console.output("\nYour current session id: " .. tostring(sessionId) .. "\n")
 	end
+	local function printSessionTimestamp(_, sessionId)
+		--[[
+			@param: Console (unnecessary)
+			@param: int | string sessionId
+				- if a string, should convert to an integer
+		]]
+
+		-- input sanitization
+		sessionId = tonumber(sessionId)
+		if sessionId == nil then
+			error("Session id must be an integer!")
+		end
+		sessionId = math.floor(sessionId)
+
+		-- ask the server
+		local sessionTimestamp = GetSessionTimestampRemote:InvokeServer(sessionId)
+		if sessionTimestamp then
+			local LocalDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
+			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us"))
+		else
+			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist")
+		end
+	end
+	local function session(_, sessionId)
+		--[[
+			@param: Console (unnecessary)
+			@param: int | string | nil sessionId
+			@post: if sessionId is nil, prints the current session id of this game/test session
+			@post: otherwise, prints the timestamp of the given session id
+		]]
+		if sessionId then
+			printSessionTimestamp(_, sessionId)
+			return
+		end
+		printSessionId()
+	end
+		
 
 	-- public | encapsulate all commands
 	local TestCommands = {
@@ -537,7 +575,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- database
 		sessionid = printSessionId,
 		id = printSessionId,
-		session = printSessionId,
+
+		sessiontime = printSessionTimestamp,
+		timestamp = printSessionTimestamp,
+
+		session = session,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command
