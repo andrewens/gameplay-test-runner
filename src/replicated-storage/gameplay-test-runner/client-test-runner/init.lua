@@ -7,6 +7,7 @@ local Maid = require(script.Parent:FindFirstChild("Maid"))
 
 local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
+local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -195,7 +196,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
-	-- public | define commands for CLI
+	-- public | test output commands
 	local function logCommand(commandName)
 		--[[
 			@param: string commandName
@@ -213,6 +214,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		Console.clear()
 		Console.output(TestOutputs[testIndex])
 	end
+
+	-- public | test navigation commands
 	local function setTestIndex(_, newTestIndex)
 		--[[
 			@param: Console (unnecessary)
@@ -286,6 +289,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 		setTestIndex(nil, "-1")
 	end
+
+	-- public | response commands for "ask" prompts
 	local function nextStep(_, response)
 		--[[
 			@param: Console (this is how Terminal passes args to command functions -- we don't need it in this case.)
@@ -341,6 +346,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		]]
 		nextStep(nil, false)
 	end
+
+	-- public | summary commands
 	local function viewSummary()
 		--[[
 			@post: draws summary of all test status (passing/failing) to screen
@@ -397,6 +404,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			prevTest()
 		end
 	end
+
+	-- public | text coloring commands
 	local function setTextColor(_, r, g, b)
 		--[[
 			@param: Console (we don't need it)
@@ -440,7 +449,38 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			'\n\nType any color name to change the terminal text. For example, try "green" (without quotes).\n'
 		)
 	end
+
+	-- public | database commands
+	local function printSessionId()
+		--[[
+			@post: 
+		]]
+		local sessionId = GetSessionIdRemote:InvokeServer()
+		Console.output("\nYour session id: " .. tostring(sessionId))
+	end
+
+	-- public | encapsulate all commands
 	local TestCommands = {
+		-- redrawing the screen
+		c = redrawCurrentTest,
+		clear = redrawCurrentTest,
+		redraw = redrawCurrentTest,
+
+		-- navigating to specific tests
+		test = setTestIndex,
+		goto = setTestIndex,
+		go = setTestIndex,
+		number = setTestIndex,
+		["#"] = setTestIndex,
+
+		ne = nextTest,
+		next = nextTest,
+		skip = nextTest,
+
+		p = prevTest,
+		prev = prevTest,
+		previous = prevTest,
+
 		-- responses to "ask" questions
 		yes = yes,
 		y = yes,
@@ -475,21 +515,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		step = nextStep,
 		ok = nextStep,
 
-		-- navigating tests/summary
-		test = setTestIndex,
-		goto = setTestIndex,
-		go = setTestIndex,
-		number = setTestIndex,
-		["#"] = setTestIndex,
-
-		ne = nextTest,
-		next = nextTest,
-		skip = nextTest,
-
-		p = prevTest,
-		prev = prevTest,
-		previous = prevTest,
-
+		-- navigating to/from summary
 		back = back,
 		b = back,
 
@@ -499,11 +525,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		sumsum = viewSummary,
 		status = viewSummary,
 
-		-- redrawing the screen
-		c = redrawCurrentTest,
-		clear = redrawCurrentTest,
-		redraw = redrawCurrentTest,
-
 		-- text colors
 		setcolor = setTextColor,
 		textcolor = setTextColor,
@@ -512,6 +533,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		palette = viewTextColors,
 		colors = viewTextColors,
+
+		-- database
+		sessionid = printSessionId,
+		id = printSessionId,
+		session = printSessionId,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command
@@ -521,7 +547,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
-	-- wrap Console for giving to gameplay test functions as "TestConsole"
+	-- public | define Console wrapper for use in gameplay test code
 	local function output(text)
 		--[[
 			@param: string text
@@ -558,7 +584,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end
 	TestConsole = {
 		ask = ask,
-		output = output,
+		output = output, -- TODO consider renaming this to print since it includes automatic new lines, and for less confusion
 		setCommandLinePrompt = setCommandLinePrompt,
 	}
 

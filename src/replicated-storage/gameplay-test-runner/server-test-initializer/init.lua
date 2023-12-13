@@ -1,13 +1,52 @@
 -- dependency
+local DataStoreService = game:GetService("DataStoreService")
+
 local Maid = require(script.Parent:FindFirstChild("Maid"))
 
 local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
+local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
+
+local TestSessionTimestampsStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
+local TestSessionStore = DataStoreService:GetGlobalDataStore("TestSessions")
+
+-- const
+local MAX_SESSION_ID_DATASTORE_KEY = "MaxSessionId"
 
 -- var
 local ServerMaid = Maid()
+local sessionId -- unique integer index of this game/test session for use in database
+
+--[[
+	0. assign session id
+	1. know what session id is
+	2. save timestamp with session id
+	3. include user id as metadata
+	4. browse all test timestamps
+]]
+
+-- private
+local function getNewSessionId(maxSessionId)
+	--[[
+		Callback for TestSessionStore:UpdateAsync(MAX_SESSION_ID_DATASTORE_KEY, ...)
+		Increments max session id so we can get a unique id for this player's session
+		@param: int maxSessionId | nil
+		@return: maxSessionId + 1 | 1
+	]]
+	if maxSessionId then
+		return maxSessionId + 1
+	end
+	return 1
+end
 
 -- public
+local function terminate()
+	--[[
+        @post: disconnects server from gameplay tests
+        (you don't have to use this method -- initialize returns the same Maid)
+    ]]
+	ServerMaid:DoCleaning()
+end
 local function initialize(TestInitializers)
 	--[[
         @param: function(testName) | table TestInitializers
@@ -15,13 +54,14 @@ local function initialize(TestInitializers)
             { string testName --> function }
         @post: gameplay tests will invoke server functions
         @post: automatically terminates any previous initializations
+		@post: assigns database session id if not already assigned
         @return: Maid
     ]]
 
 	-- no double-initializing!
-	ServerMaid:DoCleaning()
+	terminate()
 
-	-- init
+	-- set up gameplay test initializer function(s)
 	if typeof(TestInitializers) == "function" then
 		InitializeGameplayTestRemote.OnServerInvoke = function(Player, ...)
 			return TestInitializers(...)
@@ -85,24 +125,40 @@ local function initialize(TestInitializers)
 		-- sanity check
 		error(tostring(TestInitializers) .. " is not a table or function! It's a " .. typeof(TestInitializers))
 	end
-
-	-- cleanup
 	ServerMaid(function()
 		InitializeGameplayTestRemote.OnServerInvoke = function() end -- avoid yielding on client
 	end)
 
+	-- assign a unique id for this session for the database
+	if sessionId == nil then
+		local s, newSessionId
+		for tries = 1, 3 do
+			s, newSessionId = pcall(TestSessionStore.UpdateAsync, TestSessionStore, MAX_SESSION_ID_DATASTORE_KEY, getNewSessionId)
+			if s then
+				sessionId = newSessionId
+				break
+			end
+			task.wait(1)
+		end
+		if not s then
+			terminate()
+			error("Failed to get new session id\n" .. newSessionId)
+		end
+	end
+	GetSessionIdRemote.OnServerInvoke = function(...)
+		return sessionId
+	end
+	ServerMaid(function()
+		GetSessionIdRemote.OnServerInvoke = function() end -- avoid yielding on client
+	end)
+
 	return ServerMaid
-end
-local function terminate()
-	--[[
-        @post: disconnects server from gameplay tests
-        (you don't have to use this method -- initialize returns the same Maid)
-    ]]
-	ServerMaid:DoCleaning()
 end
 
 -- init
 InitializeGameplayTestRemote.OnServerInvoke = function() end -- avoid yielding on client
+GetSessionIdRemote.OnServerInvoke = function() end
+game:BindToClose(terminate)
 
 return {
 	initialize = initialize,

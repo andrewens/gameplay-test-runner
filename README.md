@@ -21,6 +21,7 @@ It's all through a Command Line Interface, btw.
 * ~~Support running server code per test~~ `Dec 11, 2023`
 * Browse other users' test results from database
   * Save test on exit
+    * ~~Assign test id on beginning~~ `Dec 13, 2023`
   * Browse all sessions
   * Browse summary of a session
   * Browse individual tests of a session
@@ -28,6 +29,9 @@ It's all through a Command Line Interface, btw.
 * Help command
 * Support player leaving comments
 * Organize test database by place version, or date
+* Support returning Maid tasks from server test initializers
+
 * Redefine the interface (and Terminal's interface) to just directly 
   interact with GUI properties as if it were another ROBLOX GUI instance
 * Terminal supports a function to interpret commands
+* Implement custom cursor with Terminal
