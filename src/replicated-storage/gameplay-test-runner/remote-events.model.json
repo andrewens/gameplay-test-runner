@@ -12,6 +12,10 @@
     {
         "ClassName": "RemoteFunction",
         "Name": "GetSessionTimestamp"
+    },
+    {
+        "ClassName": "RemoteFunction",
+        "Name": "BrowseSessionTimestamps"
     }
   ]
 }

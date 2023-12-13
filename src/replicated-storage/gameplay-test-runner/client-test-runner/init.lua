@@ -9,6 +9,7 @@ local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
 local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
+local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -39,6 +40,7 @@ local DEFAULT_TEXT_COLORS = {
 	black = Color3.new(0.1, 0.1, 0.1),
 	grey = Color3.new(0.5, 0.5, 0.5),
 }
+local MAX_SESSION_ID_STRING_LENGTH = 4 -- max number of expected digits for a session id, for formatting reasons
 
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
@@ -84,7 +86,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 	local TestRunnerMaid = Maid()
 	local Console
-	local TestConsole -- TestConsole wraps Console, allowing for convenience
+	local TestConsole -- TestConsole wraps Console for use by Gameplay Tests
 	local commandLineText = DEFAULT_COMMAND_LINE_PROMPT
 
 	local testIndex = 0
@@ -95,6 +97,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local viewingSummary = false
 	local TestStatusPassing = {} -- int i --> int number of "yes" responses per test
 	local TestStatusFailing = {} -- int i --> int number of "no" responses per test
+
+	local viewingTestBrowser = false
+	local testBrowserOutput = ""
 
 	-- private | compile gameplay tests from parameters
 	local function saveTestName(testName)
@@ -212,6 +217,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			@post: clear screen & output current test's output log
 		]]
 		viewingSummary = false
+		viewingTestBrowser = false
 		Console.clear()
 		Console.output(TestOutputs[testIndex])
 	end
@@ -393,18 +399,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 		Console.output('\n\nType "back" (without quotes) to continue.\n')
 	end
-	local function back()
-		--[[
-			@post: if viewing summary, simply exits summary.
-			@post: otherwise, goes to previous test
-		]]
-		if viewingSummary then
-			-- exit summary view
-			redrawCurrentTest()
-		else
-			prevTest()
-		end
-	end
 
 	-- public | text coloring commands
 	local function setTextColor(_, r, g, b)
@@ -451,7 +445,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		)
 	end
 
-	-- public | database commands
+	-- public | basic database read commands
 	local function printSessionId()
 		--[[
 			@post: outputs the current session id to Console
@@ -477,9 +471,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local sessionTimestamp = GetSessionTimestampRemote:InvokeServer(sessionId)
 		if sessionTimestamp then
 			local LocalDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
-			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us"))
+			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us") .. "\n")
 		else
-			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist")
+			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist\n")
 		end
 	end
 	local function session(_, sessionId)
@@ -495,14 +489,84 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 		printSessionId()
 	end
-		
+
+	-- public | database browser commands
+	local function redrawSessionBrowser(_)
+		--[[
+			@post: refreshes output with all sessions
+		]]
+		Console.clear()
+		Console.output("\nTEST SESSION DATABASE\n")
+		Console.output(testBrowserOutput)
+		Console.output("\n")
+	end
+	local function browseMoreSessionTimestamps(_, startOver)
+		--[[
+			@param: Console (unnecessary)
+			@param: any | nil startOver
+				- if truthy, server will delete its cache and start from the beginning
+		]]
+		if not viewingTestBrowser then
+			return
+		end
+
+		local SessionData = BrowseSessionTimestampsRemote:InvokeServer(startOver)
+		if SessionData == nil or #SessionData <= 0 then
+			Console.output("\nNo more test sessions in database\n")
+			return
+		end
+
+		for i, Session in SessionData do
+			local sessionId, sessionTimestamp = unpack(Session)
+			local SessionDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
+
+			sessionId = tostring(sessionId)
+			sessionId = sessionId .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId))
+
+			testBrowserOutput = testBrowserOutput .. "\n#" .. sessionId .. " " .. SessionDateTime:FormatLocalTime("llll", "en-us")
+		end
+		redrawSessionBrowser()
+	end
+	local function browseSessionTimestamps(_)
+		viewingTestBrowser = true
+		testBrowserOutput = ""
+		browseMoreSessionTimestamps(_, true)
+	end
+
+	-- public | universal commands
+	local function back()
+		--[[
+			@post: if viewing summary, simply exits summary (also applies to database browser).
+			@post: otherwise, goes to previous test
+		]]
+		if viewingSummary or viewingTestBrowser then
+			-- exit summary or browser view
+			redrawCurrentTest()
+		else
+			prevTest()
+		end
+	end
+	local function clear()
+		--[[
+			@post: redraws whatever test, summary, or browser you're looking at
+		]]
+		if viewingSummary then
+			viewSummary()
+		elseif viewingTestBrowser then
+			redrawSessionBrowser()
+		else
+			redrawCurrentTest()
+		end
+	end
 
 	-- public | encapsulate all commands
 	local TestCommands = {
-		-- redrawing the screen
-		c = redrawCurrentTest,
-		clear = redrawCurrentTest,
-		redraw = redrawCurrentTest,
+		-- univeral commands
+		back = back,
+		b = back,
+		c = clear,
+		clear = clear,
+		redraw = clear,
 
 		-- navigating to specific tests
 		test = setTestIndex,
@@ -553,10 +617,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		step = nextStep,
 		ok = nextStep,
 
-		-- navigating to/from summary
-		back = back,
-		b = back,
-
+		-- navigating to summary
 		summary = viewSummary,
 		s = viewSummary,
 		sum = viewSummary,
@@ -572,7 +633,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		palette = viewTextColors,
 		colors = viewTextColors,
 
-		-- database
+		-- basic database reading
 		sessionid = printSessionId,
 		id = printSessionId,
 
@@ -580,6 +641,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		timestamp = printSessionTimestamp,
 
 		session = session,
+
+		-- database browsing
+		more = browseMoreSessionTimestamps,
+		m = browseMoreSessionTimestamps,
+
+		browse = browseSessionTimestamps,
+		br = browseSessionTimestamps,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command

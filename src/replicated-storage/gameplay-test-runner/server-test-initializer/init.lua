@@ -7,16 +7,20 @@ local RemoteEvents = script.Parent:FindFirstChild("remote-events")
 local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGameplayTest")
 local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
+local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 
 local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
 local TestSessionStore = DataStoreService:GetGlobalDataStore("TestSessions")
 
 -- const
 local MAX_SESSION_ID_DATASTORE_KEY = "MaxSessionId"
+local SESSION_PAGE_IS_ASCENDING = false -- if false, newest tests get browsed first
+local SESSION_PAGE_SIZE = 50
 
 -- var
 local ServerMaid = Maid()
 local sessionId -- unique integer index of this game/test session for use in database
+local SessionTimestampsPage
 
 --[[
 	0. assign session id
@@ -35,6 +39,16 @@ local function sessionKey(anySessionId)
 	]]
 	assert(typeof(anySessionId) == "number" and math.floor(anySessionId) == anySessionId)
 	return "session_" .. tostring(anySessionId)
+end
+local function sessionKeyToId(anySessionKey)
+	--[[
+		@param: string anySessionKey
+		@return: integer | nil anySessionId
+			- convert a session key back to its integer session id
+	]]
+	local anySessionId = string.sub(anySessionKey, 9, -1)
+	anySessionId = tonumber(anySessionId)
+	return anySessionId
 end
 local function getNewSessionId(maxSessionId)
 	--[[
@@ -60,6 +74,43 @@ local function disconnectRemoteFunction(RemoteFunction)
 	return function()
 		RemoteFunction.OnServerInvoke = function() end
 	end
+end
+
+-- public? | network callbacks
+local function getCurrentSessionId(Player)
+	return sessionId
+end
+local function getSessionTimestamp(Player, anySessionId)
+	return TestSessionTimestampStore:GetAsync(sessionKey(anySessionId))
+end
+local function browseSessionTimestamps(Player, startOver)
+	--[[
+		@param: Instance Player
+		@param: bool | nil startOver
+			- if true, then we make a new SessionTimestampsPage
+		@return: array SessionData
+				{ int i --> { int sessionId, int sessionTimestamp } }
+	]]
+
+	if startOver or SessionTimestampsPage == nil then
+		SessionTimestampsPage = TestSessionTimestampStore:GetSortedAsync(SESSION_PAGE_IS_ASCENDING, SESSION_PAGE_SIZE)
+	elseif not SessionTimestampsPage.IsFinished then
+		SessionTimestampsPage:AdvanceToNextPageAsync()
+	else
+		return {}
+	end
+
+	local CurrentPage = SessionTimestampsPage:GetCurrentPage()
+	local SessionData = {}
+
+	for i, Session in CurrentPage do
+		SessionData[i] = {
+			sessionKeyToId(Session.key),
+			tonumber(Session.value)
+		}
+	end
+
+	return SessionData
 end
 
 -- public
@@ -167,16 +218,15 @@ local function initialize(TestInitializers)
 			error("Failed to get new session id\n" .. newSessionId)
 		end
 	end
-	GetSessionIdRemote.OnServerInvoke = function(...)
-		return sessionId
-	end
-	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
 
-	-- support client browsing the timestamp of a given session
-	GetSessionTimestampRemote.OnServerInvoke = function(Player, anySessionId)
-		return TestSessionTimestampStore:GetAsync(sessionKey(anySessionId))
-	end
+	-- allow client to read database
+	GetSessionIdRemote.OnServerInvoke = getCurrentSessionId -- view this session's id
+	GetSessionTimestampRemote.OnServerInvoke = getSessionTimestamp -- view timestamp of any session
+	BrowseSessionTimestampsRemote.OnServerInvoke = browseSessionTimestamps -- view list of all sessions, ordered chronologically
+
+	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionTimestampRemote))
+	ServerMaid(disconnectRemoteFunction(BrowseSessionTimestampsRemote))
 
 	-- save test upon terminate()
 	ServerMaid(function()

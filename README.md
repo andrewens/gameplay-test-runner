@@ -21,8 +21,10 @@ It's all through a Command Line Interface, btw.
 * ~~Support running server code per test~~ `Dec 11, 2023`
 * Browse other users' test results from database
   * ~~Save test on exit~~ `Dec 13, 2023`
-    * ~~Assign test id on beginning~~ `Dec 13, 2023`
-  * Browse all sessions
+  * ~~Assign test id on beginning~~ `Dec 13, 2023`
+  * ~~Browse all sessions~~ `Dec 13, 2023`
+  * Attach test username to each session in browser
+  * ...and its % passing and % completed
   * Browse summary of a session
   * Browse individual tests of a session
 * ~~Organize test database by place version, or date~~ `Dec 13, 2023`
