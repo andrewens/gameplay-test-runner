@@ -24,7 +24,7 @@ It's all through a Command Line Interface, btw.
   * ~~Assign test id on beginning~~ `Dec 13, 2023`
   * ~~Browse all sessions~~ `Dec 13, 2023`
   * ~~Attach test username to each session in browser~~ `Dec 17, 2023`
-  * ...and its % passing and % completed
+  * ~~...and its % passing and % completed~~ `Dec 17, 2023`
   * Browse summary of a session
   * Browse individual tests of a session
 * ~~Organize test database by place version, or date~~ `Dec 13, 2023`
@@ -34,7 +34,14 @@ It's all through a Command Line Interface, btw.
 * Support returning Maid tasks from server test initializers
 * Dump error messages in test output (?)
 
+### WISHLIST
 * Redefine the interface (and Terminal's interface) to just directly 
   interact with GUI properties as if it were another ROBLOX GUI instance
 * Terminal supports a function to interpret commands
-* Implement custom cursor with Terminal
+* Implement custom cursor with Terminal to fix roblox cursor bugs
+* Terminal window system
+  * Minimize to a taskbar
+  * Drag to resize
+  * Drag top bar to move
+  * X to close
+* Specify a (rich) text color for Console.output 

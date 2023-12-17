@@ -10,6 +10,7 @@ local InitializeGameplayTestRemote = RemoteEvents:FindFirstChild("InitializeGame
 local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
 local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
+local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -41,6 +42,7 @@ local DEFAULT_TEXT_COLORS = {
 	grey = Color3.new(0.5, 0.5, 0.5),
 }
 local MAX_SESSION_ID_STRING_LENGTH = 4 -- max number of expected digits for a session id, for formatting reasons
+local AUTO_SAVE_RATE = 5 -- seconds between auto-saves
 
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
@@ -80,23 +82,23 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local TEST_NAME_TO_SERVER_INITIALIZER = CONFIG.TEST_NAME_TO_SERVER_INITIALIZER or {}
 
 	-- var
-	local GameplayTestOrder = {} -- int i --> string testName
+	local GameplayTestOrder = {} -- int testIndex --> string testName
 	local GameplayTestFunctions = {} -- string testName --> function(TestConsole): nil
-	local OrderedTests = {} -- string testName --> int i
+	local OrderedTests = {} -- string testName --> int testIndex
 
 	local TestRunnerMaid = Maid()
 	local Console
 	local TestConsole -- TestConsole wraps Console for use by Gameplay Tests
 	local commandLineText = DEFAULT_COMMAND_LINE_PROMPT
 
-	local testIndex = 0
-	local TestThreads = {} -- int i --> thread of GameplayTestFunctions[i]
-	local TestOutputs = {} -- int i --> string outputLog (everything ever outputted during the test)
+	local currentTestIndex = 0 -- index of current test
+	local TestThreads = {} -- int testIndex --> thread of GameplayTestFunctions[testIndex]
+	local TestOutputs = {} -- int testIndex --> string outputLog (everything ever outputted during the test)
 	local userResponse -- a yes/no answer to an "ask" question in a gameplay test
 
 	local viewingSummary = false
-	local TestStatusPassing = {} -- int i --> int number of "yes" responses per test
-	local TestStatusFailing = {} -- int i --> int number of "no" responses per test
+	local TestStatusPassing = {} -- int testIndex --> int number of "yes" responses per test
+	local TestStatusFailing = {} -- int testIndex --> int number of "no" responses per test
 
 	local viewingTestBrowser = false
 	local testBrowserOutput = ""
@@ -202,6 +204,14 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 	end
 
+	-- private | misc
+	local function testIsFinished(testIndex)
+		--[[
+			@return: true if all questions for a given test are answered
+		]]
+		return TestThreads[testIndex] and coroutine.status(TestThreads[testIndex]) == "dead"
+	end
+
 	-- public | test output commands
 	local function logCommand(commandName)
 		--[[
@@ -210,7 +220,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			(this is actually a private method but it's only for the TestCommands so...)
 		]]
 		local text = "\n" .. commandLineText .. commandName
-		TestOutputs[testIndex] = (TestOutputs[testIndex] or "") .. text
+		TestOutputs[currentTestIndex] = (TestOutputs[currentTestIndex] or "") .. text
 	end
 	local function redrawCurrentTest()
 		--[[
@@ -219,7 +229,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		viewingSummary = false
 		viewingTestBrowser = false
 		Console.clear()
-		Console.output(TestOutputs[testIndex])
+		Console.output(TestOutputs[currentTestIndex])
 	end
 
 	-- public | test navigation commands
@@ -235,10 +245,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- turn newTestIndex into an actual integer representing a test
 		if string.sub(newTestIndex, 1, 1) == "+" then
 			-- support symbolic incrementing
-			newTestIndex = testIndex + tonumber(string.sub(newTestIndex, 2, -1))
+			newTestIndex = currentTestIndex + tonumber(string.sub(newTestIndex, 2, -1))
 		elseif string.sub(newTestIndex, 1, 1) == "-" then
 			-- support symbolic decrementing
-			newTestIndex = testIndex - tonumber(string.sub(newTestIndex, 2, -1))
+			newTestIndex = currentTestIndex - tonumber(string.sub(newTestIndex, 2, -1))
 		else
 			-- default rawsetting index behavior
 			if tonumber(newTestIndex) == nil then
@@ -254,23 +264,23 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		-- switch the test
-		testIndex = newTestIndex
+		currentTestIndex = newTestIndex
 		redrawCurrentTest()
 
 		-- ask server to initialize whatever it needs to for this test
-		local clientTestName = GameplayTestOrder[testIndex] -- this nonsense VVV allows us to reuse a server function per multiple client tests
+		local clientTestName = GameplayTestOrder[currentTestIndex] -- this nonsense VVV allows us to reuse a server function per multiple client tests
 		local serverTestName = TEST_NAME_TO_SERVER_INITIALIZER[clientTestName] or clientTestName
 		InitializeGameplayTestRemote:InvokeServer(serverTestName)
 
 		-- resume test thread if it isn't finished
-		if coroutine.status(TestThreads[testIndex]) == "dead" then
+		if coroutine.status(TestThreads[currentTestIndex]) == "dead" then
 			TestConsole.setCommandLinePrompt()
 			return
 		end
-		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[testIndex] .. ">")
-		if TestOutputs[testIndex] == nil then
+		TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. GameplayTestOrder[currentTestIndex] .. ">")
+		if TestOutputs[currentTestIndex] == nil then
 			-- we only need to resume if the test thread hasn't been initialized yet
-			coroutine.resume(TestThreads[testIndex])
+			coroutine.resume(TestThreads[currentTestIndex])
 		end
 	end
 	local function nextTest()
@@ -279,7 +289,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		]]
 
 		-- display cheeky message if we're at the end of the tests
-		if testIndex >= #GameplayTestOrder then
+		if currentTestIndex >= #GameplayTestOrder then
 			Console.output("\n\n" .. END_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
@@ -290,7 +300,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			@post: moves back to previous gameplay test (testIndex -= 1)
 		]]
 		-- display cheeky message if we're at the very beginning of the tests
-		if testIndex <= 1 then
+		if currentTestIndex <= 1 then
 			Console.output("\n\n" .. BEGINNING_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
@@ -323,13 +333,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		-- don't do anything if we ran out of gameplay tests
-		if testIndex > #GameplayTestOrder then
+		if currentTestIndex > #GameplayTestOrder then
 			Console.output("\n\n" .. END_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
 
 		-- move onto next test if current one is finished
-		if coroutine.status(TestThreads[testIndex]) == "dead" then
+		if testIsFinished(currentTestIndex) then
 			setTestIndex(nil, "+1") -- go onto next test
 			return
 		end
@@ -339,7 +349,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		logCommand(if response then "yes" else "no")
 
 		TestConsole.output()
-		coroutine.resume(TestThreads[testIndex])
+		coroutine.resume(TestThreads[currentTestIndex])
 	end
 	local function yes()
 		--[[
@@ -384,7 +394,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 				TestStatus[i] = " (IN-PROGRESS)"
 			end
 
-			if testIndex == i then
+			if currentTestIndex == i then
 				TestStatus[i] = (TestStatus[i] or "") .. " <-- current"
 			end
 		end
@@ -526,23 +536,24 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 			sessionTimestamp = SessionDateTime:FormatLocalTime("llll", "en-us") .. " "
 
-			local userName = "(?) "
+			local userName = ""
 			if UserNames then
-				userName = "\n" .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH + 4) .. tostring(UserNames[1]) .. " "
+				userName = tostring(UserNames[1]) .. " "
 				if #UserNames > 1 then
 					userName = userName .. "+" .. tostring(#UserNames - 1) .. " "
 				end
 			end
 
-			local testSummary = "(?) "
+			local testSummary = ""
 			if numPassing and numFailing and numTotal then
-				testSummary = tostring(math.round(10^1 * numPassing / numTotal) * 10^1)
+				testSummary = tostring(math.round(10^3 * numPassing / numTotal) * 10^-1)
 					.. "% P; " -- P for passing
-					.. tostring(math.round(10^1 * (numPassing + numFailing) / numTotal) * 10^1)
+					.. tostring(math.round(10^3 * (numPassing + numFailing) / numTotal) * 10^-1)
 					.. "% C " -- C for completed
+					.. "\n" .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH + 4)
 			end
 
-			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. sessionTimestamp .. userName .. testSummary
+			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. userName .. testSummary .. sessionTimestamp
 		end
 		redrawSessionBrowser()
 	end
@@ -550,6 +561,54 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		viewingTestBrowser = true
 		testBrowserOutput = ""
 		browseMoreSessionTimestamps(_, true)
+	end
+
+	-- public | database write commands
+	local function saveSessionState(_)
+		--[[
+			@post: saves test session state to database
+		]]
+
+		-- build session state
+		-- TODO probably should just make this the application state
+		local SessionState = {
+			Passing = 0,
+			Failing = 0,
+			Total = 0,
+			Summary = {}, -- { int testIndex --> { Passing: int, Failing: int, Total: int }
+			Logs = TestOutputs,
+		}
+
+		for testIndex, numPassing in TestStatusPassing do
+			local numFailing = TestStatusFailing[testIndex]
+			local numTotal = numFailing + numPassing
+
+			SessionState.Summary[testIndex] = {
+				Passing = numPassing,
+				Failing = numFailing,
+				Total = numTotal,
+			}
+
+			if testIsFinished(testIndex) then
+				if numPassing >= numTotal then 
+					SessionState.Passing += 1
+				else
+					SessionState.Failing += 1
+				end
+			end
+			SessionState.Total += 1
+		end
+
+		-- ask server to save it for us >_<
+		Console.output("\nSaving...")
+		local success = SaveSessionRemote:InvokeServer(SessionState)
+		if success then
+			Console.output("\nSaved successfully.\n")
+		else
+			Console.output("\nSave failed!.\n")
+		end
+
+		return success
 	end
 
 	-- public | universal commands
@@ -667,6 +726,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		browse = browseSessionTimestamps,
 		br = browseSessionTimestamps,
+
+		-- database writing
+		save = saveSessionState,
+		write = saveSessionState,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command
@@ -684,7 +747,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			@post: saves text to the test's output log (TestOutputs[testIndex])
 		]]
 		text = "\n" .. (text or "")
-		TestOutputs[testIndex] = (TestOutputs[testIndex] or "") .. text
+		TestOutputs[currentTestIndex] = (TestOutputs[currentTestIndex] or "") .. text
 		return Console.output(text)
 	end
 	local function ask(prompt)
@@ -697,9 +760,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		coroutine.yield()
 
 		if userResponse then
-			TestStatusPassing[testIndex] += 1
+			TestStatusPassing[currentTestIndex] += 1
 		else
-			TestStatusFailing[testIndex] += 1
+			TestStatusFailing[currentTestIndex] += 1
 		end
 		return userResponse
 	end
@@ -755,6 +818,14 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			end
 		end)
 	end
+
+	-- auto-save
+	--[[
+	task.spawn(function()
+		while (task.wait(AUTO_SAVE_RATE)) do
+			Console.command("save")
+		end
+	end)--]]
 
 	-- automatically begin running tests
 	nextTest()

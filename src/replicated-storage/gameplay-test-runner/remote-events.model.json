@@ -10,12 +10,16 @@
       "Name": "GetSessionId"
     },
     {
-        "ClassName": "RemoteFunction",
-        "Name": "GetSessionTimestamp"
+      "ClassName": "RemoteFunction",
+      "Name": "GetSessionTimestamp"
     },
     {
-        "ClassName": "RemoteFunction",
-        "Name": "BrowseSessionTimestamps"
+      "ClassName": "RemoteFunction",
+      "Name": "BrowseSessionTimestamps"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SaveSession"
     }
   ]
 }
