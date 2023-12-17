@@ -510,20 +510,39 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			return
 		end
 
+		Console.output("\nFetching tests from database...")
 		local SessionData = BrowseSessionTimestampsRemote:InvokeServer(startOver)
 		if SessionData == nil or #SessionData <= 0 then
-			Console.output("\nNo more test sessions in database\n")
+			Console.output("\nNo more tests\n")
 			return
 		end
 
 		for i, Session in SessionData do
-			local sessionId, sessionTimestamp = unpack(Session)
+			local sessionId, sessionTimestamp, UserNames, numPassing, numFailing, numTotal = unpack(Session)
 			local SessionDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
 
 			sessionId = tostring(sessionId)
-			sessionId = sessionId .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId))
+			sessionId = "#" .. sessionId .. string.rep(" ", math.max(MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId), 0) + 1) .. " "
 
-			testBrowserOutput = testBrowserOutput .. "\n#" .. sessionId .. " " .. SessionDateTime:FormatLocalTime("llll", "en-us")
+			sessionTimestamp = SessionDateTime:FormatLocalTime("llll", "en-us") .. " "
+
+			local userName = "(?) "
+			if UserNames then
+				userName = "\n" .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH + 4) .. tostring(UserNames[1]) .. " "
+				if #UserNames > 1 then
+					userName = userName .. "+" .. tostring(#UserNames - 1) .. " "
+				end
+			end
+
+			local testSummary = "(?) "
+			if numPassing and numFailing and numTotal then
+				testSummary = tostring(math.round(10^1 * numPassing / numTotal) * 10^1)
+					.. "% P; " -- P for passing
+					.. tostring(math.round(10^1 * (numPassing + numFailing) / numTotal) * 10^1)
+					.. "% C " -- C for completed
+			end
+
+			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. sessionTimestamp .. userName .. testSummary
 		end
 		redrawSessionBrowser()
 	end

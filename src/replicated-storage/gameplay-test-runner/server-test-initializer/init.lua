@@ -1,5 +1,7 @@
 -- dependency
 local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 
 local Maid = require(script.Parent:FindFirstChild("Maid"))
 
@@ -16,11 +18,13 @@ local TestSessionStore = DataStoreService:GetGlobalDataStore("TestSessions")
 local MAX_SESSION_ID_DATASTORE_KEY = "MaxSessionId"
 local SESSION_PAGE_IS_ASCENDING = false -- if false, newest tests get browsed first
 local SESSION_PAGE_SIZE = 50
+local SESSION_BROWSE_TIMEOUT = 2
 
 -- var
 local ServerMaid = Maid()
 local sessionId -- unique integer index of this game/test session for use in database
 local SessionTimestampsPage
+local CachedPlayerNames = {} -- int userId --> string userName (cached from ROBLOX)
 
 --[[
 	0. assign session id
@@ -75,6 +79,32 @@ local function disconnectRemoteFunction(RemoteFunction)
 		RemoteFunction.OnServerInvoke = function() end
 	end
 end
+local function getPlayerName(userId)
+	--[[
+		@param: int userId
+		@return: string userName
+		@post: yields, unless username is cached
+	]]
+	-- sanity check
+	if not (typeof(userId) == "number" and math.floor(userId) == userId) then
+		error(tostring(userId) .. " isn't an integer! It's a " .. typeof(userId))
+	end
+
+	-- return cached userName
+	if CachedPlayerNames[userId] then
+		return CachedPlayerNames[userId]
+	end
+
+	-- otherwise, look up the user name
+	local s, playerName = pcall(Players.GetNameFromUserIdAsync, Players, userId)
+	if s then
+		CachedPlayerNames[userId] = playerName
+		return playerName
+	end
+
+	-- in case of network fail
+	return "User_" .. tostring(userId)
+end
 
 -- public? | network callbacks
 local function getCurrentSessionId(Player)
@@ -102,12 +132,46 @@ local function browseSessionTimestamps(Player, startOver)
 
 	local CurrentPage = SessionTimestampsPage:GetCurrentPage()
 	local SessionData = {}
+	local numLoadedSessions = 0
+	local numTotalSessions = 0
+	local startTime = os.clock()
 
 	for i, Session in CurrentPage do
+		-- we can get session id / timestamp from GetSortedAsync
+		local thisSessionId = sessionKeyToId(Session.key)
+		local thisSessionTimestamp = tonumber(Session.value)
 		SessionData[i] = {
-			sessionKeyToId(Session.key),
-			tonumber(Session.value)
+			thisSessionId,
+			thisSessionTimestamp,
 		}
+
+		-- we have to use GetAsync to find the UserId's associated with the test
+		numTotalSessions += 1
+		task.spawn(function()
+			local s, SessionSummary = pcall(TestSessionStore.GetAsync, TestSessionStore, Session.key .. "/summary")
+			if s and SessionSummary then
+				SessionSummary = HttpService:JSONDecode(SessionSummary)
+				local UserNames = {}
+				for j, userId in SessionSummary.UserIds do
+					UserNames[j] = getPlayerName(userId)
+				end
+
+				SessionData[i] = {
+					thisSessionId,
+					thisSessionTimestamp,
+
+					UserNames,
+					SessionSummary.NumPassing,
+					SessionSummary.NumFailing,
+					SessionSummary.NumTotal,
+				}
+			end
+			numLoadedSessions += 1
+		end)
+	end
+
+	while numLoadedSessions < numTotalSessions or os.clock() - startTime > SESSION_BROWSE_TIMEOUT do
+		task.wait()
 	end
 
 	return SessionData
@@ -121,19 +185,31 @@ local function terminate()
     ]]
 	ServerMaid:DoCleaning()
 end
-local function initialize(TestInitializers)
+local function initialize(TestInitializers, UserIds)
 	--[[
         @param: function(testName) | table TestInitializers
             { int i --> Instance (should contain module scripts returning functions) }
             { string testName --> function }
+		@param: table UserIds -- users involved with this test
         @post: gameplay tests will invoke server functions
         @post: automatically terminates any previous initializations
 		@post: assigns database session id if not already assigned
+		@post: allows client to read database via RemoteFunctions
         @return: Maid
     ]]
 
 	-- no double-initializing!
 	terminate()
+
+	-- sanity check
+	if typeof(UserIds) ~= "table" then
+		error(tostring(UserIds) .. " isn't a table! It's a " .. typeof(UserIds))
+	end
+	for i, userId in UserIds do
+		if typeof(userId) ~= "number" or math.floor(userId) ~= userId then
+			error("UserIds[" .. i .. "] = " .. tostring(userId) .. " isn't an integer. It's a " .. typeof(userId))
+		end
+	end
 
 	-- set up gameplay test initializer function(s)
 	if typeof(TestInitializers) == "function" then
@@ -233,18 +309,52 @@ local function initialize(TestInitializers)
 		local timestamp = os.time()
 
 		-- save timestamp to an ordered datastore for browsing tests in chronological order
-		local s, msg
-		for tries = 1, 3 do
-			s, msg =
-				pcall(TestSessionTimestampStore.SetAsync, TestSessionTimestampStore, sessionKey(sessionId), timestamp)
-			if s then
-				break
+		task.spawn(function()
+			local s, msg
+			for tries = 1, 3 do
+				s, msg = pcall(
+					TestSessionTimestampStore.SetAsync,
+					TestSessionTimestampStore,
+					sessionKey(sessionId),
+					timestamp
+				)
+				if s then
+					break
+				end
+				task.wait(1)
 			end
-			task.wait(1)
-		end
-		if not s then
-			error("Failed to save test (session id: " .. tostring(sessionId) .. ")\n" .. tostring(msg))
-		end
+			if not s then
+				error("Failed to save test timestamp (session id: " .. tostring(sessionId) .. ")\n" .. tostring(msg))
+			end
+		end)
+
+		-- save test summary
+		task.spawn(function()
+			local SessionSummary = {
+				NumPassing = math.random(10),
+				NumFailing = math.random(10),
+				NumTotal = math.random(20, 30),
+				UserIds = UserIds,
+			}
+			SessionSummary = HttpService:JSONEncode(SessionSummary)
+			local s, msg
+			for tries = 1, 3 do
+				s, msg = pcall(
+					TestSessionStore.SetAsync,
+					TestSessionStore,
+					sessionKey(sessionId) .. "/summary",
+					SessionSummary,
+					UserIds
+				)
+				if s then
+					break
+				end
+				task.wait(1)
+			end
+			if not s then
+				error("Failed to save test summary (session id: " .. tostring(sessionId) .. ")\n" .. tostring(msg))
+			end
+		end)
 	end)
 
 	return ServerMaid

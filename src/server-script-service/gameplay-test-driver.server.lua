@@ -1,5 +1,6 @@
 -- dependency
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local ServerTestInitializersFolder = script.Parent:FindFirstChild("server-test-initializers")
 
 local GameplayTestRunner = require(ReplicatedStorage:FindFirstChild("gameplay-test-runner"))
@@ -11,7 +12,9 @@ end
 
 -- init
 local ServerTestInitializers = {
-    ServerTestInitializersFolder,
-    test2 = test2
+	ServerTestInitializersFolder,
+	test2 = test2,
 }
-GameplayTestRunner.initialize(ServerTestInitializers)
+Players.PlayerAdded:Connect(function(Player)
+	GameplayTestRunner.initialize(ServerTestInitializers, { Player.UserId })
+end)

@@ -23,7 +23,7 @@ It's all through a Command Line Interface, btw.
   * ~~Save test on exit~~ `Dec 13, 2023`
   * ~~Assign test id on beginning~~ `Dec 13, 2023`
   * ~~Browse all sessions~~ `Dec 13, 2023`
-  * Attach test username to each session in browser
+  * ~~Attach test username to each session in browser~~ `Dec 17, 2023`
   * ...and its % passing and % completed
   * Browse summary of a session
   * Browse individual tests of a session
