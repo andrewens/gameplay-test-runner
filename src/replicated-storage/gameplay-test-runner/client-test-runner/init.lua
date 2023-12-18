@@ -11,6 +11,7 @@ local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
 local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
+local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -457,51 +458,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		)
 	end
 
-	-- public | basic database read commands
-	local function printSessionId()
-		--[[
-			@post: outputs the current session id to Console
-		]]
-		local sessionId = GetSessionIdRemote:InvokeServer()
-		Console.output("\nYour current session id: " .. tostring(sessionId) .. "\n")
-	end
-	local function printSessionTimestamp(_, sessionId)
-		--[[
-			@param: Console (unnecessary)
-			@param: int | string sessionId
-				- if a string, should convert to an integer
-		]]
-
-		-- input sanitization
-		sessionId = tonumber(sessionId)
-		if sessionId == nil then
-			error("Session id must be an integer!")
-		end
-		sessionId = math.floor(sessionId)
-
-		-- ask the server
-		local sessionTimestamp = GetSessionTimestampRemote:InvokeServer(sessionId)
-		if sessionTimestamp then
-			local LocalDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
-			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us") .. "\n")
-		else
-			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist\n")
-		end
-	end
-	local function session(_, sessionId)
-		--[[
-			@param: Console (unnecessary)
-			@param: int | string | nil sessionId
-			@post: if sessionId is nil, prints the current session id of this game/test session
-			@post: otherwise, prints the timestamp of the given session id
-		]]
-		if sessionId then
-			printSessionTimestamp(_, sessionId)
-			return
-		end
-		printSessionId()
-	end
-
 	-- public | database browser commands
 	local function redrawSessionBrowser(_)
 		--[[
@@ -549,9 +505,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			local testSummary = ""
 			if numPassing and numFailing and numTotal then
 				testSummary = tostring(math.round(10^2 * numPassing / numTotal))
-					.. "% passing " -- P for passing
+					.. "% passing "
 					.. tostring(math.round(10^2 * (numPassing + numFailing) / numTotal))
-					.. "% complete " -- C for completed
+					.. "% complete "
 			end
 
 			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. sessionTimestamp .. userName .. testSummary
@@ -562,6 +518,98 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		viewingTestBrowser = true
 		testBrowserOutput = ""
 		browseMoreSessionTimestamps(_, true)
+	end
+	local function printSessionSummary(_, sessionId)
+		--[[
+
+		]]
+
+		-- sanity check
+		sessionId = tonumber(sessionId)
+		if sessionId == nil then
+			error("Session id must be an integer!")
+		end
+
+		-- database query
+		local SessionData = GetSessionSummaryRemote:InvokeServer(sessionId)
+		if SessionData == nil then
+			Console.output("\nFailed to get summary for session #" .. tostring(sessionId) .. "\n")
+		end
+
+		-- data massaging
+		local Timestamp = DateTime.fromUnixTimestamp(SessionData.Timestamp)
+
+		-- output
+		Console.clear()
+		Console.output("\nTest Session #" .. tostring(sessionId))
+		Console.output("\n" .. Timestamp:FormatLocalTime("LLLL", "en-us"))
+		Console.output(
+			"\nPassing: "
+			.. tostring(SessionData.Passing)
+			.. " Failing: "
+			.. tostring(SessionData.Failing)
+			.. " Total: "
+			.. tostring(SessionData.Total)
+		)
+		Console.output("\n")
+		for testIndex, TestScore in SessionData.Summary do
+			Console.output(
+				"\n["
+				.. tostring(testIndex)
+				.. "] - Passing: "
+				.. tostring(TestScore.Passing)
+				.. " Failing: "
+				.. tostring(TestScore.Failing)
+				.. " Total: "
+				.. tostring(TestScore.Total)
+			)
+		end
+		Console.output("\n")
+	end
+
+	-- public | basic database read commands
+	local function printSessionId()
+		--[[
+			@post: outputs the current session id to Console
+		]]
+		local sessionId = GetSessionIdRemote:InvokeServer()
+		Console.output("\nYour current session id: " .. tostring(sessionId) .. "\n")
+	end
+	local function printSessionTimestamp(_, sessionId)
+		--[[
+			@param: Console (unnecessary)
+			@param: int | string sessionId
+				- if a string, should convert to an integer
+		]]
+
+		-- input sanitization
+		sessionId = tonumber(sessionId)
+		if sessionId == nil then
+			error("Session id must be an integer!")
+		end
+		sessionId = math.floor(sessionId)
+
+		-- ask the server
+		local sessionTimestamp = GetSessionTimestampRemote:InvokeServer(sessionId)
+		if sessionTimestamp then
+			local LocalDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
+			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us") .. "\n")
+		else
+			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist\n")
+		end
+	end
+	local function session(_, sessionId)
+		--[[
+			@param: Console (unnecessary)
+			@param: int | string | nil sessionId
+			@post: if sessionId is nil, prints the current session id of this game/test session
+			@post: otherwise, prints the timestamp of the given session id
+		]]
+		if sessionId then
+			printSessionSummary(_, sessionId)
+			return
+		end
+		printSessionId()
 	end
 
 	-- public | database write commands
@@ -732,6 +780,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		browse = browseSessionTimestamps,
 		br = browseSessionTimestamps,
+
+		sessionsummary = printSessionSummary,
 
 		-- database writing
 		save = saveCommand,

@@ -11,6 +11,7 @@ local GetSessionIdRemote = RemoteEvents:FindFirstChild("GetSessionId")
 local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimestamp")
 local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
+local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
 
 local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
 --[[
@@ -29,6 +30,7 @@ local SESSION_PAGE_IS_ASCENDING = false -- if false, newest tests get browsed fi
 local SESSION_PAGE_SIZE = 50
 local SESSION_BROWSE_TIMEOUT = 2
 local SESSION_SAVE_TIMEOUT = 20
+local SESSION_SUMMARY_RETRIEVE_TIMEOUT = 5
 
 -- var
 local ServerMaid = Maid()
@@ -176,7 +178,7 @@ local function isValidTestScore(TestScore)
 	return isInteger(TestScore.Passing) and isInteger(TestScore.Failing) and isInteger(TestScore.Total)
 end
 
--- public? | network callbacks
+-- protected | network callbacks
 local function getCurrentSessionId(Player)
 	return sessionId
 end
@@ -189,7 +191,7 @@ local function browseSessionTimestamps(Player, startOver)
 		@param: bool | nil startOver
 			- if true, then we make a new SessionTimestampsPage
 		@return: array SessionData
-				{ int i --> { int sessionId, int sessionTimestamp } }
+				{ int i --> { int sessionId, int sessionTimestamp, { string userName }, int passing, int failing, int total } }
 	]]
 
 	if startOver or SessionTimestampsPage == nil then
@@ -260,6 +262,7 @@ local function saveThisSessionState(Player, SessionState)
 				int testIndex: string
 			}
 		}
+		@return: true if save was successful
 		@post: assigns session id if it hasn't been already
 		@post: SessionState is saved to database
 		@post: SessionState is cached. If the state hasn't changed and the last save was successful,
@@ -298,11 +301,22 @@ local function saveThisSessionState(Player, SessionState)
 		end
 	end
 	if typeof(SessionState.Logs) ~= "table" then
-		error("SessionState.Logs = " .. tostring(SessionState.Logs) .. " which is a " .. typeof(SessionState.Logs) .. ", not a table")
+		error(
+			"SessionState.Logs = "
+				.. tostring(SessionState.Logs)
+				.. " which is a "
+				.. typeof(SessionState.Logs)
+				.. ", not a table"
+		)
 	end
 	for testIndex, testLog in SessionState.Logs do
 		if typeof(testIndex) ~= "number" or math.floor(testIndex) ~= testIndex then
-			error("The key at SessionState.Logs[" .. tostring(testIndex) .. "] isn't an integer! It's a " .. typeof(testIndex))
+			error(
+				"The key at SessionState.Logs["
+					.. tostring(testIndex)
+					.. "] isn't an integer! It's a "
+					.. typeof(testIndex)
+			)
 		end
 		if typeof(testLog) ~= "string" then
 			error("SessionState.Logs[" .. tostring(testIndex) .. "] isn't a string! It's a " .. typeof(testLog))
@@ -443,6 +457,74 @@ local function saveThisSessionState(Player, SessionState)
 	lastSaveWasSuccessful = numSuccessfulSaves >= numCompletedSaveAtttempts
 	return lastSaveWasSuccessful
 end
+local function getSessionSummary(Player, anySessionId)
+	--[[
+		@param: Instance Player
+		@param: int anySessionId
+		@return: nil | table {
+			Passing: int
+			Failing: int
+			Total: int
+			Timestamp: int
+			Summary: { int testIndex --> { Passing: int, Failing: int, Total: int } }
+		}
+	]]
+
+	-- database query
+	local numComplete = 0
+	local timestamp, score, summary
+
+	task.spawn(function()
+		local s, output = pcall(function()
+			return TestSessionTimestampStore:GetAsync(sessionKey(anySessionId))
+		end)
+		if s then
+			timestamp = output
+		else
+			error(output)
+		end
+		numComplete += 1
+	end)
+	task.spawn(function()
+		local s, output = pcall(function()
+			return TestSessionStore:GetAsync(sessionKey(anySessionId) .. "/score")
+		end)
+		if s then
+			score = HttpService:JSONDecode(output)
+		else
+			error(output)
+		end
+		numComplete += 1
+	end)
+	task.spawn(function()
+		local s, output = pcall(function()
+			return TestSessionStore:GetAsync(sessionKey(anySessionId) .. "/summary")
+		end)
+		if s then
+			summary = HttpService:JSONDecode(output)
+		else
+			error(output)
+		end
+		numComplete += 1
+	end)
+
+	-- wait for query to finish
+	local start = os.clock()
+	while os.clock() - start < SESSION_SUMMARY_RETRIEVE_TIMEOUT and numComplete < 3 do
+		task.wait()
+	end
+
+	-- don't return partial data sets
+	if timestamp and score and summary then
+		return {
+			Timestamp = timestamp,
+			Passing = score.Passing,
+			Failing = score.Failing,
+			Total = score.Total,
+			Summary = summary,
+		}
+	end
+end
 
 -- public
 local function terminate()
@@ -549,11 +631,13 @@ local function initialize(TestInitializers, UserIds)
 	GetSessionTimestampRemote.OnServerInvoke = getSessionTimestamp -- view timestamp of any session
 	BrowseSessionTimestampsRemote.OnServerInvoke = browseSessionTimestamps -- view list of all sessions, ordered chronologically
 	SaveSessionRemote.OnServerInvoke = saveThisSessionState -- save session state
+	GetSessionSummaryRemote.OnServerInvoke = getSessionSummary -- view summary of a session's test scores
 
 	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionTimestampRemote))
 	ServerMaid(disconnectRemoteFunction(BrowseSessionTimestampsRemote))
 	ServerMaid(disconnectRemoteFunction(SaveSessionRemote))
+	ServerMaid(disconnectRemoteFunction(GetSessionSummaryRemote))
 
 	return ServerMaid
 end
@@ -563,6 +647,7 @@ disconnectRemoteFunction(InitializeGameplayTestRemote)()
 disconnectRemoteFunction(GetSessionIdRemote)()
 disconnectRemoteFunction(GetSessionTimestampRemote)()
 disconnectRemoteFunction(SaveSessionRemote)()
+disconnectRemoteFunction(GetSessionSummaryRemote)()
 game:BindToClose(terminate)
 
 return {

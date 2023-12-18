@@ -20,6 +20,10 @@
     {
       "ClassName": "RemoteFunction",
       "Name": "SaveSession"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GetSessionSummary"
     }
   ]
 }
