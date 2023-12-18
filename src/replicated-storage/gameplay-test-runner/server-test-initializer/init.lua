@@ -260,18 +260,11 @@ local function saveThisSessionState(Player, SessionState)
 				int testIndex: string
 			}
 		}
+		@post: assigns session id if it hasn't been already
 		@post: SessionState is saved to database
 		@post: SessionState is cached. If the state hasn't changed and the last save was successful,
 			then it doesn't make any database calls
-		@throw: if session id hasn't been initialized
 	--]]
-
-	-- sanity check
-	if sessionId == nil then
-		error(
-			"gameplay-test-runner server hasn't been initialized.\nAttempt to save session before initializing session id."
-		)
-	end
 
 	-- sanity check | parameters
 	if typeof(SessionState) ~= "table" then
@@ -313,6 +306,23 @@ local function saveThisSessionState(Player, SessionState)
 		end
 		if typeof(testLog) ~= "string" then
 			error("SessionState.Logs[" .. tostring(testIndex) .. "] isn't a string! It's a " .. typeof(testLog))
+		end
+	end
+
+	-- assign a unique id for this session for the database
+	if sessionId == nil then
+		local s, newSessionId
+		for tries = 1, 3 do
+			s, newSessionId =
+				pcall(TestSessionStore.UpdateAsync, TestSessionStore, MAX_SESSION_ID_DATASTORE_KEY, getNewSessionId)
+			if s then
+				sessionId = newSessionId
+				break
+			end
+			task.wait(1)
+		end
+		if not s then
+			error("Failed to assign session id\n" .. newSessionId)
 		end
 	end
 
@@ -533,24 +543,6 @@ local function initialize(TestInitializers, UserIds)
 		error(tostring(TestInitializers) .. " is not a table or function! It's a " .. typeof(TestInitializers))
 	end
 	ServerMaid(disconnectRemoteFunction(InitializeGameplayTestRemote))
-
-	-- assign a unique id for this session for the database
-	if sessionId == nil then
-		local s, newSessionId
-		for tries = 1, 3 do
-			s, newSessionId =
-				pcall(TestSessionStore.UpdateAsync, TestSessionStore, MAX_SESSION_ID_DATASTORE_KEY, getNewSessionId)
-			if s then
-				sessionId = newSessionId
-				break
-			end
-			task.wait(1)
-		end
-		if not s then
-			terminate()
-			error("Failed to get new session id\n" .. newSessionId)
-		end
-	end
 
 	-- allow client to read database
 	GetSessionIdRemote.OnServerInvoke = getCurrentSessionId -- view this session's id
