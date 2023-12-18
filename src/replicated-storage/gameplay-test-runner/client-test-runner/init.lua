@@ -521,7 +521,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end
 	local function printSessionSummary(_, sessionId)
 		--[[
-
+			@param: string | integer sessionId
+			@post: outputs every test's score in a session
 		]]
 
 		-- sanity check

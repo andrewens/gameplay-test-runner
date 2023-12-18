@@ -323,6 +323,20 @@ local function saveThisSessionState(Player, SessionState)
 		end
 	end
 
+	-- don't do anything if SessionState hasn't changed and last save was successful
+	if lastSaveWasSuccessful and deepTableEquality(SessionState, LastSessionState) then
+		return true
+	end
+
+	-- don't save SessionStates that are 0% completed UNLESS the last session state was partially completed
+	if
+		SessionState.Passing == 0
+		and SessionState.Failing == 0
+		and not (LastSessionState and (LastSessionState.Passing > 0 or LastSessionState.Failing > 0))
+	then
+		return false
+	end
+
 	-- assign a unique id for this session for the database
 	if sessionId == nil then
 		local s, newSessionId
@@ -338,11 +352,6 @@ local function saveThisSessionState(Player, SessionState)
 		if not s then
 			error("Failed to assign session id\n" .. newSessionId)
 		end
-	end
-
-	-- don't do anything if SessionState hasn't changed and last save was successful
-	if lastSaveWasSuccessful and deepTableEquality(SessionState, LastSessionState) then
-		return true
 	end
 	lastSaveWasSuccessful = true
 
