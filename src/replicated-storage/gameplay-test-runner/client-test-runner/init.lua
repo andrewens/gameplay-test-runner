@@ -82,6 +82,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local TEST_NAME_TO_SERVER_INITIALIZER = CONFIG.TEST_NAME_TO_SERVER_INITIALIZER or {}
 
 	-- var
+	local isRunning = true -- this is set to false when GameplayTestRunner is destroyed
+
 	local GameplayTestOrder = {} -- int testIndex --> string testName
 	local GameplayTestFunctions = {} -- string testName --> function(TestConsole): nil
 	local OrderedTests = {} -- string testName --> int testIndex
@@ -546,10 +548,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 			local testSummary = ""
 			if numPassing and numFailing and numTotal then
-				testSummary = tostring(math.round(10^3 * numPassing / numTotal) * 10^-1)
-					.. "% P " -- P for passing
-					.. tostring(math.round(10^3 * (numPassing + numFailing) / numTotal) * 10^-1)
-					.. "% C " -- C for completed
+				testSummary = tostring(math.round(10^2 * numPassing / numTotal))
+					.. "% passing " -- P for passing
+					.. tostring(math.round(10^2 * (numPassing + numFailing) / numTotal))
+					.. "% complete " -- C for completed
 			end
 
 			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. sessionTimestamp .. userName .. testSummary
@@ -565,16 +567,16 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	-- public | database write commands
 	local function saveSessionState(_)
 		--[[
-			@post: saves test session state to database
+			@post: saves test session state to database (no outputting to console)
+			@return: bool successful
 		]]
 
 		-- build session state
-		-- TODO probably should just make this the application state
 		local SessionState = {
 			Passing = 0,
 			Failing = 0,
 			Total = 0,
-			Summary = {}, -- { int testIndex --> { Passing: int, Failing: int, Total: int }
+			Summary = {}, -- { int testIndex --> { Passing: int, Failing: int, Total: int } }
 			Logs = TestOutputs,
 		}
 
@@ -599,15 +601,20 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		end
 
 		-- ask server to save it for us >_<
+		return SaveSessionRemote:InvokeServer(SessionState)
+	end
+	local function saveCommand(_)
+		--[[
+			@post: saves test session state to database
+			@post: outputs to console
+		]]
 		Console.output("\nSaving...")
-		local success = SaveSessionRemote:InvokeServer(SessionState)
+		local success = saveSessionState(_)
 		if success then
 			Console.output("\nSaved successfully.\n")
 		else
-			Console.output("\nSave failed!.\n")
+			Console.output("\nFailed to save.\n")
 		end
-
-		return success
 	end
 
 	-- public | universal commands
@@ -727,8 +734,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		br = browseSessionTimestamps,
 
 		-- database writing
-		save = saveSessionState,
-		write = saveSessionState,
+		save = saveCommand,
+		sa = saveCommand,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command
@@ -784,6 +791,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	Console = Terminal(ScrollingFrame, TestCommands)
 	TestRunnerMaid(Console)
 	setmetatable(TestConsole, { __index = Console })
+	TestRunnerMaid(function()
+		isRunning = false
+	end)
 
 	-- create a thread per test function
 	for i, testName in GameplayTestOrder do
@@ -819,16 +829,16 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end
 
 	-- auto-save
-	--[[
 	task.spawn(function()
-		while (task.wait(AUTO_SAVE_RATE)) do
-			Console.command("save")
+		while isRunning do
+			task.wait(AUTO_SAVE_RATE)
+			saveSessionState()
 		end
-	end)--]]
+	end)
 
 	-- automatically begin running tests
 	nextTest()
-	Console.initialize()
+	Console.initialize() -- i think this yields...
 
 	-- this object exposes Terminal's TextBox and
 	-- allows you to destroy the whole thing
