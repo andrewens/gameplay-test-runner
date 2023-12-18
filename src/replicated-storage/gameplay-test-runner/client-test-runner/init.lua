@@ -602,6 +602,14 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			.. tostring(SessionData.Total)
 		)
 
+		if SessionData.UserNames then
+			Console.output("\n")
+			Console.output("\nUsers")
+			for _, userName in SessionData.UserNames do
+				Console.output("\n    " .. tostring(userName))
+			end
+		end
+
 		Console.output("\n")
 		for testIndex, TestScore in SessionData.Summary do
 			Console.output(
@@ -829,6 +837,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		timestamp = printSessionTimestamp,
 
 		session = session,
+		se = session,
 
 		-- database browsing
 		more = browseMoreSessionTimestamps,

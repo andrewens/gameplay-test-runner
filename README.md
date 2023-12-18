@@ -29,13 +29,13 @@ It's all through a Command Line Interface, btw.
   * ~~Browse summary of a session~~ `Dec 18, 2023`
   * ~~Browse individual tests of a session~~ `Dec 18, 2023`
 * ~~Don't save 0% completed tests~~ `Dec 18, 2023`
+* ~~Display users in session summary!~~ `Dec 18, 2023`
 * Option to restart a test
 * Help command
 * Support player leaving comments
 * Support returning Maid tasks from server test initializers
 * Dump error messages in test output (?)
 * Erase tests
-* Display users in session summary!
 
 ### WISHLIST
 * Exit test-response mode after viewing a session summary

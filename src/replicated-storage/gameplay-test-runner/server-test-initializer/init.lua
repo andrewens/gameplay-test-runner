@@ -20,7 +20,7 @@ local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSess
 ]]
 local TestSessionStore = DataStoreService:GetGlobalDataStore("TestSessions")
 --[[
-	Session_SESSION_ID		/summary --> { int testIndex: { Passing: int, Failing: int, Total: int } }
+	Session_SESSION_ID		/summary --> { int testIndex: { Passing: int, Failing: int, Total: int, UserIds: { int } } }
 							/logs --> { int testIndex: string }
 							/score --> { Passing: int, Failing: int, Total: int }
 ]]
@@ -475,6 +475,7 @@ local function getSessionSummary(Player, anySessionId)
 			Passing: int
 			Failing: int
 			Total: int
+			UserNames: { string userName }
 			Timestamp: int
 			Summary: { int testIndex --> { Passing: int, Failing: int, Total: int } }
 		}
@@ -487,7 +488,7 @@ local function getSessionSummary(Player, anySessionId)
 
 	-- database query
 	local numComplete = 0
-	local timestamp, score, summary
+	local timestamp, score, summary, UserNames
 
 	task.spawn(function()
 		local s, output = pcall(function()
@@ -506,6 +507,10 @@ local function getSessionSummary(Player, anySessionId)
 		end)
 		if s then
 			score = HttpService:JSONDecode(output)
+			UserNames = {}
+			for i, userId in score.UserIds do
+				UserNames[i] = getPlayerName(userId)
+			end
 		else
 			error(output)
 		end
@@ -535,6 +540,7 @@ local function getSessionSummary(Player, anySessionId)
 			Timestamp = timestamp,
 			Passing = score.Passing,
 			Failing = score.Failing,
+			UserNames = UserNames,
 			Total = score.Total,
 			Summary = summary,
 		}
