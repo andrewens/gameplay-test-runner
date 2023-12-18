@@ -32,7 +32,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = LocalPlayer.PlayerGui
 
 local ScrollingFrame = Instance.new("ScrollingFrame")
-ScrollingFrame.Size = UDim2.new(0, 400, 1, 0)
+ScrollingFrame.Size = UDim2.new(0, 500, 1, 0)
 ScrollingFrame.Parent = ScreenGui
 
 local TestRunner = GameplayTestRunner(ScrollingFrame, GameplayTests, CONFIG)

@@ -534,7 +534,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			sessionId = tostring(sessionId)
 			sessionId = "#" .. sessionId .. string.rep(" ", math.max(MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId), 0) + 1) .. " "
 
-			sessionTimestamp = SessionDateTime:FormatLocalTime("llll", "en-us") .. " "
+			sessionTimestamp = SessionDateTime:FormatLocalTime("l", "en-us") .. " " .. SessionDateTime:FormatLocalTime("LT", "en-us") .. " "
 
 			local userName = ""
 			if UserNames then
@@ -547,13 +547,12 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			local testSummary = ""
 			if numPassing and numFailing and numTotal then
 				testSummary = tostring(math.round(10^3 * numPassing / numTotal) * 10^-1)
-					.. "% P; " -- P for passing
+					.. "% P " -- P for passing
 					.. tostring(math.round(10^3 * (numPassing + numFailing) / numTotal) * 10^-1)
 					.. "% C " -- C for completed
-					.. "\n" .. string.rep(" ", MAX_SESSION_ID_STRING_LENGTH + 4)
 			end
 
-			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. userName .. testSummary .. sessionTimestamp
+			testBrowserOutput = testBrowserOutput .. "\n" .. sessionId .. sessionTimestamp .. userName .. testSummary
 		end
 		redrawSessionBrowser()
 	end
