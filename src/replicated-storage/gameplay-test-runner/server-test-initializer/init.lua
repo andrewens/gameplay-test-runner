@@ -12,6 +12,7 @@ local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimesta
 local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
 local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
+local GetTestLogRemote = RemoteEvents:FindFirstChild("GetTestLog")
 
 local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
 --[[
@@ -479,6 +480,11 @@ local function getSessionSummary(Player, anySessionId)
 		}
 	]]
 
+	-- sanity check
+	if not isInteger(anySessionId) then
+		error(tostring(anySessionId) .. " isn't an integer! It's a " .. typeof(anySessionId))
+	end
+
 	-- database query
 	local numComplete = 0
 	local timestamp, score, summary
@@ -534,6 +540,32 @@ local function getSessionSummary(Player, anySessionId)
 		}
 	end
 end
+local function getTestLog(Player, anySessionId, anyTestIndex)
+	--[[
+		@param: int anySessionId
+		@param: int anyTestIndex
+		@return: nil | string testLog
+	]]
+
+	-- sanity check
+	if not isInteger(anySessionId) then
+		error(tostring(anySessionId) .. " isn't an integer! It's a " .. typeof(anySessionId))
+	end
+	if not isInteger(anyTestIndex) then
+		error(tostring(anyTestIndex) .. " isn't an integer! It's a " .. typeof(anyTestIndex))
+	end
+
+	-- database query
+	local SessionLogs = TestSessionStore:GetAsync(sessionKey(anySessionId) .. "/logs")
+	SessionLogs = HttpService:JSONDecode(SessionLogs)
+
+	local testLog = SessionLogs[anyTestIndex]
+	if testLog == nil then
+		error("There is no Test #" .. tostring(anyTestIndex) .. " in Session #" .. tostring(anySessionId))
+	end
+
+	return testLog
+end
 
 -- public
 local function terminate()
@@ -549,11 +581,11 @@ local function initialize(TestInitializers, UserIds)
             { int i --> Instance (should contain module scripts returning functions) }
             { string testName --> function }
 		@param: table UserIds -- users involved with this test
-        @post: gameplay tests will invoke server functions
+        @post: gameplay tests will invoke server initializer functions
         @post: automatically terminates any previous initializations
-		@post: assigns database session id if not already assigned
-		@post: allows client to read database via RemoteFunctions
+		@post: allows client to read from/save to database via RemoteFunctions
         @return: Maid
+			- Maid:DoCleaning() is identical to terminate() method
     ]]
 
 	-- no double-initializing!
@@ -641,12 +673,14 @@ local function initialize(TestInitializers, UserIds)
 	BrowseSessionTimestampsRemote.OnServerInvoke = browseSessionTimestamps -- view list of all sessions, ordered chronologically
 	SaveSessionRemote.OnServerInvoke = saveThisSessionState -- save session state
 	GetSessionSummaryRemote.OnServerInvoke = getSessionSummary -- view summary of a session's test scores
+	GetTestLogRemote.OnServerInvoke = getTestLog
 
 	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionTimestampRemote))
 	ServerMaid(disconnectRemoteFunction(BrowseSessionTimestampsRemote))
 	ServerMaid(disconnectRemoteFunction(SaveSessionRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionSummaryRemote))
+	ServerMaid(disconnectRemoteFunction(GetTestLogRemote))
 
 	return ServerMaid
 end
@@ -657,6 +691,7 @@ disconnectRemoteFunction(GetSessionIdRemote)()
 disconnectRemoteFunction(GetSessionTimestampRemote)()
 disconnectRemoteFunction(SaveSessionRemote)()
 disconnectRemoteFunction(GetSessionSummaryRemote)()
+disconnectRemoteFunction(GetTestLogRemote)()
 game:BindToClose(terminate)
 
 return {

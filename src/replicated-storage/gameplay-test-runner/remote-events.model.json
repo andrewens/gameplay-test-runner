@@ -24,6 +24,10 @@
     {
       "ClassName": "RemoteFunction",
       "Name": "GetSessionSummary"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GetTestLog"
     }
   ]
 }

@@ -12,6 +12,7 @@ local GetSessionTimestampRemote = RemoteEvents:FindFirstChild("GetSessionTimesta
 local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSessionTimestamps")
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
 local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
+local GetTestLogRemote = RemoteEvents:FindFirstChild("GetTestLog")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -519,6 +520,50 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		testBrowserOutput = ""
 		browseMoreSessionTimestamps(_, true)
 	end
+
+	-- public | basic database read commands
+	local function printTestLog(_, sessionId, testIndex)
+		--[[
+			@param: string | integer sessionId
+			@param: string | integer testIndex
+			@post: output that test's log from the database
+		]]
+
+		-- sanity check
+		sessionId = tonumber(sessionId)
+		if sessionId == nil then
+			error("Session id must be an integer!")
+		end
+
+		testIndex = tonumber(testIndex)
+		if testIndex == nil then
+			error("Test index must be an integer!")
+		end
+
+		-- database query
+		local testLog = GetTestLogRemote:InvokeServer(sessionId, testIndex)
+		if testLog == nil then
+			Console.output(
+				"\nFailed to get Test Log for Session #"
+				.. tostring(sessionId)
+				.. " Test #"
+				.. tostring(testIndex)
+				..
+				"\n"
+			)
+			return
+		end
+
+		-- dump data in console
+		Console.clear()
+		Console.output("\n=============================================================")
+		Console.output("\n================= SESSION #" .. tostring(sessionId) .. " TEST #" .. tostring(testIndex))
+		Console.output("\n=============================================================")
+		Console.output(testLog)
+		Console.output("\n=============================================================")
+		Console.output("\n=================== BROWSING MODE ===========================")
+		Console.output("\n=============================================================\n")
+	end
 	local function printSessionSummary(_, sessionId)
 		--[[
 			@param: string | integer sessionId
@@ -542,7 +587,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		-- output
 		Console.clear()
-		Console.output("\nTest Session #" .. tostring(sessionId))
+		Console.output("\n=============================================================")
+		Console.output("\n================= SESSION #" .. tostring(sessionId) .. " SUMMARY")
+		Console.output("\n=============================================================")
+
+		Console.output("\n")
 		Console.output("\n" .. Timestamp:FormatLocalTime("LLLL", "en-us"))
 		Console.output(
 			"\nPassing: "
@@ -552,10 +601,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			.. " Total: "
 			.. tostring(SessionData.Total)
 		)
+
 		Console.output("\n")
 		for testIndex, TestScore in SessionData.Summary do
 			Console.output(
-				"\n["
+				"\n[Test #"
 				.. tostring(testIndex)
 				.. "] - Passing: "
 				.. tostring(TestScore.Passing)
@@ -565,10 +615,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 				.. tostring(TestScore.Total)
 			)
 		end
-		Console.output("\n")
-	end
 
-	-- public | basic database read commands
+		Console.output("\n\n=============================================================")
+		Console.output("\n=================== BROWSING MODE ===========================")
+		Console.output("\n=============================================================\n")
+	end
 	local function printSessionId()
 		--[[
 			@post: outputs the current session id to Console
@@ -599,13 +650,17 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist\n")
 		end
 	end
-	local function session(_, sessionId)
+	local function session(_, sessionId, testIndex)
 		--[[
 			@param: Console (unnecessary)
 			@param: int | string | nil sessionId
 			@post: if sessionId is nil, prints the current session id of this game/test session
 			@post: otherwise, prints the timestamp of the given session id
 		]]
+		if testIndex then
+			printTestLog(_, sessionId, testIndex)
+			return
+		end
 		if sessionId then
 			printSessionSummary(_, sessionId)
 			return
@@ -783,6 +838,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		br = browseSessionTimestamps,
 
 		sessionsummary = printSessionSummary,
+		["session-summary"] = printSessionSummary,
+
+		["test-log"] = printTestLog,
+		log = printTestLog,
 
 		-- database writing
 		save = saveCommand,
