@@ -13,6 +13,7 @@ local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSession
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
 local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
 local GetTestLogRemote = RemoteEvents:FindFirstChild("GetTestLog")
+local EraseSessionRemote = RemoteEvents:FindFirstChild("EraseSession")
 
 -- const
 local DEFAULT_CONFIG = {
@@ -728,6 +729,41 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			Console.output("\nFailed to save.\n")
 		end
 	end
+	local function eraseSession(_, minSessionId, maxSessionId)
+		--[[
+			@param: Console (unnecessary)
+			@param: int | string minSessionId
+			@param: nil | int | string maxSessionId
+			@post: erases a given session or, if maxSessionId is provided, a range of sessions
+		]]
+
+		-- sanity check
+		minSessionId = tonumber(minSessionId)
+		if minSessionId == nil then
+			error("Session id must be an integer!")
+		end
+		if maxSessionId then
+			maxSessionId = tonumber(maxSessionId)
+			if maxSessionId == nil then
+				error("Both session id's must be integers!")
+			end
+		end
+
+		-- immediate feedback for user
+		if maxSessionId then
+			Console.output("\nErasing Sessions from #" .. tostring(minSessionId) .. " to #" .. tostring(maxSessionId) .. "...")
+		else
+			Console.output("\nErasing Session #" .. tostring(minSessionId) .. "...")
+		end
+
+		-- database write
+		local success = EraseSessionRemote:InvokeServer(minSessionId, maxSessionId)
+		if success then
+			Console.output("\nSuccess!\n")
+		else
+			Console.output("\nIt didn't work.\n")
+		end
+	end
 
 	-- public | universal commands
 	local function back()
@@ -855,6 +891,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- database writing
 		save = saveCommand,
 		sa = saveCommand,
+
+		erase = eraseSession,
+		["erase-session"] = eraseSession,
 	}
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command

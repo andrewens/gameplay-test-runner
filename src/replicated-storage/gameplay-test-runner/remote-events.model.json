@@ -28,6 +28,10 @@
     {
       "ClassName": "RemoteFunction",
       "Name": "GetTestLog"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "EraseSession"
     }
   ]
 }

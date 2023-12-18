@@ -13,6 +13,7 @@ local BrowseSessionTimestampsRemote = RemoteEvents:FindFirstChild("BrowseSession
 local SaveSessionRemote = RemoteEvents:FindFirstChild("SaveSession")
 local GetSessionSummaryRemote = RemoteEvents:FindFirstChild("GetSessionSummary")
 local GetTestLogRemote = RemoteEvents:FindFirstChild("GetTestLog")
+local EraseSessionRemote = RemoteEvents:FindFirstChild("EraseSession")
 
 local TestSessionTimestampStore = DataStoreService:GetOrderedDataStore("TestSessionTimestamps")
 --[[
@@ -32,6 +33,7 @@ local SESSION_PAGE_SIZE = 50
 local SESSION_BROWSE_TIMEOUT = 2
 local SESSION_SAVE_TIMEOUT = 20
 local SESSION_SUMMARY_RETRIEVE_TIMEOUT = 5
+local SESSION_ERASE_TIMEOUT = 20
 
 -- var
 local ServerMaid = Maid()
@@ -40,6 +42,7 @@ local SessionTimestampsPage
 local CachedPlayerNames = {} -- int userId --> string userName (cached from ROBLOX)
 local LastSessionState -- cache test state to avoid unnecessary network calls
 local lastSaveWasSuccessful
+local Admins = {} -- int userId --> true
 
 -- private | misc
 local function disconnectRemoteFunction(RemoteFunction)
@@ -572,6 +575,82 @@ local function getTestLog(Player, anySessionId, anyTestIndex)
 
 	return testLog
 end
+local function eraseSession(Player, minSessionId, maxSessionId)
+	--[[
+		@param: Instance Player
+		@param: int minSessionId
+		@param: nil | int maxSessionId
+		@post: PLAYER MUST BE AN ADMIN USER
+		@post: if only minSessionId is specified, that session is erased
+		@post: if both session id's are specified, then all sessions in that range (inclusive) are erased
+		@return: bool successful
+	]]
+
+	-- only admins allowed!!!!
+	if not Admins[Player.UserId] then
+		return false
+	end
+
+	-- erasing an individual session
+	if maxSessionId == nil then
+		-- sanity check
+		if not isInteger(minSessionId) then
+			error(tostring(minSessionId) .. " isn't an integer! It's a " .. typeof(minSessionId))
+		end
+
+		-- database write
+		local s, output = pcall(function()
+			TestSessionTimestampStore:RemoveAsync(sessionKey(minSessionId))
+			TestSessionStore:RemoveAsync(sessionKey(minSessionId) .. "/logs")
+			TestSessionStore:RemoveAsync(sessionKey(minSessionId) .. "/summary")
+			TestSessionStore:RemoveAsync(sessionKey(minSessionId) .. "/score")
+		end)
+		if not s then
+			error(output)
+		end
+
+		return true
+	end
+
+	-- erasing a range of sessions
+	-- sanity check
+	if not isInteger(minSessionId) then
+		error(tostring(minSessionId) .. " isn't an integer! It's a " .. typeof(minSessionId))
+	end
+	if not isInteger(maxSessionId) then
+		error(tostring(maxSessionId) .. " isn't an integer! It's a " .. typeof(maxSessionId))
+	end
+
+	-- database write
+	local startTime = os.clock()
+	local numSuccessful = 0
+	local numCompleted = 0
+	local numTotal = 0
+
+	for id = minSessionId, maxSessionId do
+		numTotal += 1
+		task.spawn(function()
+			local s, output = pcall(function()
+				TestSessionTimestampStore:RemoveAsync(sessionKey(id))
+				TestSessionStore:RemoveAsync(sessionKey(id) .. "/logs")
+				TestSessionStore:RemoveAsync(sessionKey(id) .. "/summary")
+				TestSessionStore:RemoveAsync(sessionKey(id) .. "/score")
+			end)
+			numCompleted += 1
+			if s then
+				numSuccessful += 1
+			else
+				error(output)
+			end
+		end)
+	end
+
+	while (numCompleted < numTotal and os.clock() - startTime < SESSION_ERASE_TIMEOUT) do
+		task.wait()
+	end
+
+	return numSuccessful >= numTotal
+end
 
 -- public
 local function terminate()
@@ -581,15 +660,18 @@ local function terminate()
     ]]
 	ServerMaid:DoCleaning()
 end
-local function initialize(TestInitializers, UserIds)
+local function initialize(TestInitializers, CONFIG)
 	--[[
         @param: function(testName) | table TestInitializers
             { int i --> Instance (should contain module scripts returning functions) }
             { string testName --> function }
-		@param: table UserIds -- users involved with this test
+		@param: nil | table CONFIG {
+			ADMIN_USERS: { int userId } -- list of users that are allowed to erase database entries
+		}
         @post: gameplay tests will invoke server initializer functions
         @post: automatically terminates any previous initializations
 		@post: allows client to read from/save to database via RemoteFunctions
+		@post: Admins list is updated (it gets wiped on terminate())
         @return: Maid
 			- Maid:DoCleaning() is identical to terminate() method
     ]]
@@ -597,13 +679,30 @@ local function initialize(TestInitializers, UserIds)
 	-- no double-initializing!
 	terminate()
 
-	-- sanity check
-	if typeof(UserIds) ~= "table" then
-		error(tostring(UserIds) .. " isn't a table! It's a " .. typeof(UserIds))
-	end
-	for i, userId in UserIds do
-		if typeof(userId) ~= "number" or math.floor(userId) ~= userId then
-			error("UserIds[" .. i .. "] = " .. tostring(userId) .. " isn't an integer. It's a " .. typeof(userId))
+	-- config
+	if CONFIG then
+		if CONFIG.ADMIN_USERS then
+			-- saniy check
+			for i, userId in CONFIG.ADMIN_USERS do
+				if not isInteger(userId) then
+					error(
+						"CONFIG.ADMIN_USERS["
+							.. tostring(i)
+							.. "] = "
+							.. tostring(userId)
+							.. " which isn't an integer. It's a "
+							.. typeof(userId)
+					)
+				end
+			end
+
+			-- save to admins
+			for i, userId in CONFIG.ADMIN_USERS do
+				Admins[userId] = true
+			end
+			ServerMaid:GiveTask(function()
+				Admins = {}
+			end)
 		end
 	end
 
@@ -673,13 +772,14 @@ local function initialize(TestInitializers, UserIds)
 	end
 	ServerMaid(disconnectRemoteFunction(InitializeGameplayTestRemote))
 
-	-- allow client to read database
+	-- allow client to read/write database
 	GetSessionIdRemote.OnServerInvoke = getCurrentSessionId -- view this session's id
 	GetSessionTimestampRemote.OnServerInvoke = getSessionTimestamp -- view timestamp of any session
 	BrowseSessionTimestampsRemote.OnServerInvoke = browseSessionTimestamps -- view list of all sessions, ordered chronologically
 	SaveSessionRemote.OnServerInvoke = saveThisSessionState -- save session state
 	GetSessionSummaryRemote.OnServerInvoke = getSessionSummary -- view summary of a session's test scores
 	GetTestLogRemote.OnServerInvoke = getTestLog
+	EraseSessionRemote.OnServerInvoke = eraseSession
 
 	ServerMaid(disconnectRemoteFunction(GetSessionIdRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionTimestampRemote))
@@ -687,6 +787,7 @@ local function initialize(TestInitializers, UserIds)
 	ServerMaid(disconnectRemoteFunction(SaveSessionRemote))
 	ServerMaid(disconnectRemoteFunction(GetSessionSummaryRemote))
 	ServerMaid(disconnectRemoteFunction(GetTestLogRemote))
+	ServerMaid(disconnectRemoteFunction(EraseSessionRemote))
 
 	return ServerMaid
 end
@@ -698,6 +799,7 @@ disconnectRemoteFunction(GetSessionTimestampRemote)()
 disconnectRemoteFunction(SaveSessionRemote)()
 disconnectRemoteFunction(GetSessionSummaryRemote)()
 disconnectRemoteFunction(GetTestLogRemote)()
+disconnectRemoteFunction(EraseSessionRemote)()
 game:BindToClose(terminate)
 
 return {

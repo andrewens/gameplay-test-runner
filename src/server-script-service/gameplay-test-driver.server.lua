@@ -15,6 +15,12 @@ local ServerTestInitializers = {
 	ServerTestInitializersFolder,
 	test2 = test2,
 }
+local CONFIG = {
+	ADMIN_USERS = {
+		9792010, -- Rockraider400
+		-1,
+	}
+}
 Players.PlayerAdded:Connect(function(Player)
-	GameplayTestRunner.initialize(ServerTestInitializers, { Player.UserId })
+	GameplayTestRunner.initialize(ServerTestInitializers, CONFIG)
 end)
