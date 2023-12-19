@@ -1,5 +1,6 @@
 -- dependency
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 local Terminal = require(script:FindFirstChild("Terminal"))
@@ -46,6 +47,12 @@ local DEFAULT_TEXT_COLORS = {
 local MAX_SESSION_ID_STRING_LENGTH = 4 -- max number of expected digits for a session id, for formatting reasons
 local AUTO_SAVE_RATE = 5 -- seconds between auto-saves
 local LOCAL_PLAYER_NAME = LocalPlayer.Name
+local COMMAND_METADATA = {} -- string commandName | alias --> CommandMetadata
+local HORIZONTAL_LINE_WIDTH = 62 -- length of "======" strings
+local NUM_HELP_COLUMNS = 4
+local HELP_COLUMN_WIDTH = math.floor(HORIZONTAL_LINE_WIDTH / NUM_HELP_COLUMNS)
+local DEFAULT_RAINBOW_PERIOD = 20
+local DEFAULT_RAINBOW_STEPS = 12
 local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	--[[
 		string commandName --> {
@@ -60,31 +67,35 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	-- universal commands
 	help = {
 		Description = "Lists all commands. If `commandName` is specified, prints documentation for that command.",
-		Aliases = { "help", "h", },
+		Aliases = { "help", "h" },
 		Arguments = {
 			{
 				Name = "commandName",
-				Types = { "string", "nil" }
-			}
+				Types = { "string", "nil" },
+			},
 		},
 		Usage = {
 			"-- list all commands\n" .. LOCAL_PLAYER_NAME .. ">help",
-			"-- list help for a specific command\n-- (in this case, the 'next' command)\n" .. LOCAL_PLAYER_NAME .. ">help next"
-		}
+			"-- list help for a specific command\n-- (in this case, the 'next' command)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">help next",
+		},
 	},
 	clear = {
 		Description = "Redraws the terminal screen and clears extraneous commands that haven't modified the gameplay test state. Gameplay test data, test summaries, and database entries will not be cleared.",
-		Aliases = { "clear", "c", },
+		Aliases = { "clear", "c" },
 		Usage = {
-			"-- let's say you've typed a lot of 'next' commands\n-- and you want to clear them to look at the\n-- current gameplay test better...\n" .. LOCAL_PLAYER_NAME .. ">clear"
-		}
+			"-- let's say you've typed a lot of 'next' commands\n-- and you want to clear them to look at the\n-- current gameplay test better...\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">clear",
+		},
 	},
 	back = {
 		Description = "Takes you back to the previous screen. If viewing a gameplay test, takes you to previous test.",
-		Aliases = { "back", "b", },
+		Aliases = { "back", "b" },
 		Usage = {
-			"-- take me back!\n" .. LOCAL_PLAYER_NAME .. ">back"
-		}
+			"-- take me back!\n" .. LOCAL_PLAYER_NAME .. ">back",
+		},
 	},
 
 	-- answering gameplay test questions
@@ -92,63 +103,71 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 		Description = "Answers 'yes' to a question in a gameplay test, which marks the question as passing.",
 		Aliases = { "yes", "y" },
 		Usage = {
-			"-- after a test asks you if something works,\n-- and it does actually work\n" .. LOCAL_PLAYER_NAME .. "/someTest>yes",
-			"-- after a test asks you if something works,\n-- and it does NOT work\n" .. LOCAL_PLAYER_NAME.."/someTest>no",
-		}
+			"-- after a test asks you if something works,\n-- and it does actually work\n"
+				.. LOCAL_PLAYER_NAME
+				.. "/someTest>yes",
+			"-- after a test asks you if something works,\n-- and it does NOT work\n"
+				.. LOCAL_PLAYER_NAME
+				.. "/someTest>no",
+		},
 	},
 	no = {
 		Description = "Answers 'no' to a question in a gameplay test, which marks the question as failing.",
 		Aliases = { "no", "n" },
 		Usage = {
-			"-- after a test asks you if something works,\n-- and it does NOT work\n" .. LOCAL_PLAYER_NAME .. "/someTest>no",
-			"-- after a test asks you if something works,\n-- and it does actually work\n" .. LOCAL_PLAYER_NAME .. "/someTest>yes",
-		}
+			"-- after a test asks you if something works,\n-- and it does NOT work\n"
+				.. LOCAL_PLAYER_NAME
+				.. "/someTest>no",
+			"-- after a test asks you if something works,\n-- and it does actually work\n"
+				.. LOCAL_PLAYER_NAME
+				.. "/someTest>yes",
+		},
 	},
 	answer = {
 		Description = "Generalized version of 'yes' and 'no' commands -- answers a gameplay test question. If `response` is equal to 'yes', it marks the question as a yes/pass, otherwise it marks it as a no/fail.",
-		Aliases = { "answer", "ok", },
+		Aliases = { "answer", "ok" },
 		Arguments = {
 			{
 				Name = "response",
-				Types = { "string", "boolean", "nil" }
-			}
+				Types = { "string", "boolean", "nil" },
+			},
 		},
 		Usage = {
 			"-- answer a gameplay test question as a 'yes'\n" .. LOCAL_PLAYER_NAME .. "/someTest>answer yes",
 			"-- answer a gameplay test question as a 'no'\n" .. LOCAL_PLAYER_NAME .. "/someTest>answer no",
-		}
+		},
 	},
 
 	-- test navigation
 	next = {
 		Description = "Takes you to the next gameplay test. The test you were running before gets paused and can be returned to at any time.",
-		Aliases = { "next", "ne", "skip", },
+		Aliases = { "next", "ne", "skip" },
 		Usage = {
-			"-- skip current test and go to the next one\n" .. LOCAL_PLAYER_NAME ..">next"
-		}
+			"-- skip current test and go to the next one\n" .. LOCAL_PLAYER_NAME .. ">next",
+		},
 	},
 	previous = {
 		Description = "Takes you to the previous gameplay test. The test you were running before gets paused and can be returned to at any time.",
-		Aliases = { "previous", "prev", "p", },
+		Aliases = { "previous", "prev", "p" },
 		Usage = {
-			"-- go back to previous test\n" .. LOCAL_PLAYER_NAME.. ">prev"
-		}
+			"-- go back to previous test\n" .. LOCAL_PLAYER_NAME .. ">prev",
+		},
 	},
 	index = {
 		Description = "Generalized version of 'next' and 'previous' command -- skips you backward or forward a number of gameplay tests.\n\nIf `newTestIndex` is just a number, it will go to the gameplay test with that index.\nIf `newTestIndex` has a '+' or a '-' in front of a number, it will skip forward/backward that number of gameplay tests respectively.",
 		Arguments = {
 			{
 				Name = "newTestIndex",
-				Types = { "string", "number" }
-			}
+				Types = { "string", "number" },
+			},
 		},
-		Aliases = { "index", "goto", "test", "go", "setTestIndex", }
+		Aliases = { "index", "goto", "test", "go", "setTestIndex" },
 	},
 
 	-- summary
 	summary = {
 		Description = "View list of all gameplay tests in your current session, and their pass/fail/completion scores. Use 'back' to exit summary.",
-		Aliases = { "summary", "s", "sum",}
+		Aliases = { "summary", "s", "sum" },
 	},
 
 	-- text coloring
@@ -158,7 +177,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 		Arguments = {
 			{
 				Name = "colorName | red",
-				Types = { "string", "number", },
+				Types = { "string", "number" },
 			},
 			{
 				Name = "green",
@@ -173,16 +192,57 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 			"-- view a list of all colors\n" .. LOCAL_PLAYER_NAME .. ">palette",
 			"-- set text color to cyan\n" .. LOCAL_PLAYER_NAME .. ">color cyan",
 			"-- set text color to cyan, but lazily\n" .. LOCAL_PLAYER_NAME .. ">cyan",
-			"-- set text color to a specific RGB value\n-- (numbers must be between 0 and 255)\n" .. LOCAL_PLAYER_NAME .. ">color 123 0 255"
-		}
+			"-- set text color to a specific RGB value\n-- (numbers must be between 0 and 255)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">color 123 0 255",
+		},
 	},
 	palette = {
 		Description = "Prints a list of default color names to terminal. Type any color name as a command to change the terminal's text color.",
-		Aliases = { "palette", "colors", },
+		Aliases = { "palette", "colors" },
 		Usage = {
 			"-- view a list of all default colors\n" .. LOCAL_PLAYER_NAME .. ">palette",
 			"-- set text color to cyan\n" .. LOCAL_PLAYER_NAME .. ">cyan",
-		}
+		},
+	},
+	rainbow = {
+		Description = "Shifts terminal text color through every hue in the rainbow. `rainbowPeriod` is the number of seconds it takes to complete one full shift through the entire rainbow. Default value is "
+			.. tostring(DEFAULT_RAINBOW_PERIOD)
+			.. " seconds.\n\nUse the 'stop' command to stop it. `numRainbowSteps` is the number of discrete colors it transitions to. Higher number of steps = more colors and a smoother transition. Default value is "
+			.. tostring(DEFAULT_RAINBOW_STEPS)
+			.. " colors/steps.",
+		Arguments = {
+			{
+				Name = "rainbowPeriod",
+				Types = { "nil", "number" },
+			},
+			{
+				Name = "numRainbowSteps",
+				Types = { "nil", "number" },
+			},
+		},
+		Aliases = {
+			"rainbow",
+			"rain",
+			"r",
+		},
+		Usage = {
+			"-- make text start color shifting\n" .. LOCAL_PLAYER_NAME .. ">rainbow",
+			"-- oh god make it stop!!\n" .. LOCAL_PLAYER_NAME .. ">stop",
+			"-- change the rainbow period to 1 second\n" .. LOCAL_PLAYER_NAME .. ">rainbow 1",
+			"-- setting to a normal color will automatically stop rainbowing\n" .. LOCAL_PLAYER_NAME .. ">white",
+			"-- make the rainbow shift between only cyan & red\n" .. LOCAL_PLAYER_NAME .. ">rainbow 1 2",
+		},
+	},
+	stop = {
+		Description = "Stops text from color shifting. See the 'rainbow' command.",
+		Aliases = {
+			"stop", "sto",
+		},
+		Usage = {
+			"-- make text start color shifting\n" .. LOCAL_PLAYER_NAME .. ">rainbow",
+			"-- oh god make it stop!!\n" .. LOCAL_PLAYER_NAME .. ">stop",
+		},
 	},
 
 	-- database browsing
@@ -200,17 +260,23 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 			},
 		},
 		Usage = {
-			"-- to find out your current session's id...\n-- (if it prints nil, your session hasn't been saved yet.)\n" .. LOCAL_PLAYER_NAME .. ">session",
-			"-- to view any session's summary...\n-- (in this case, session #37)\n" .. LOCAL_PLAYER_NAME .. ">session 37",
+			"-- to find out your current session's id...\n-- (if it prints nil, your session hasn't been saved yet.)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">session",
+			"-- to view any session's summary...\n-- (in this case, session #37)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">session 37",
 			"-- to view the logs of session #37's 2nd test\n" .. LOCAL_PLAYER_NAME .. ">session 37 2",
 		},
 	},
 	browse = {
 		Description = "Prints list of most recent test sessions from database. Use the 'session' command to see more detailed info of any given test session. Use the 'more' command to fetch more sessions from the database.",
-		Aliases = { "browse", "br", },
+		Aliases = { "browse", "br" },
 		Usage = {
 			"-- to see a list of most recent test sessions\n" .. LOCAL_PLAYER_NAME .. ">browse",
-			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n" .. LOCAL_PLAYER_NAME .. ">more"
+			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">more",
 		},
 	},
 	more = {
@@ -218,16 +284,20 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 		Aliases = { "more", "m" },
 		Usage = {
 			"-- to see a list of most recent test sessions\n" .. LOCAL_PLAYER_NAME .. ">browse",
-			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n" .. LOCAL_PLAYER_NAME .. ">more"
-		}
+			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">more",
+		},
 	},
 
 	-- database writing
 	save = {
-		Description = "Any somewhat completed session state will be automatically saved within " .. AUTO_SAVE_RATE .. " seconds of being changed. However, if you want to manually save your session state, use this command. Note that session states with no finished tests will always fail to save, to avoid database clutter.",
-		Aliases = { "save", "sa", },
+		Description = "Any somewhat completed session state will be automatically saved within "
+			.. AUTO_SAVE_RATE
+			.. " seconds of being changed. However, if you want to manually save your session state, use this command. Note that session states with no finished tests will always fail to save, to avoid database clutter.",
+		Aliases = { "save", "sa" },
 		Usage = {
-			"-- to manually save session state\n" .. LOCAL_PLAYER_NAME .. ">save"
+			"-- to manually save session state\n" .. LOCAL_PLAYER_NAME .. ">save",
 		},
 	},
 	erase = {
@@ -236,7 +306,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 		Arguments = {
 			{
 				Name = "firstSessionId",
-				Types = { "integer", },
+				Types = { "integer" },
 			},
 			{
 				Name = "lastSessionId",
@@ -244,16 +314,15 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 			},
 		},
 		Usage = {
-			"-- to erase an individual session from the database\n-- (in this case, session #37)\n" .. LOCAL_PLAYER_NAME .. ">erase 37",
-			"-- to erase multiple sessions from the database\n-- (in this case, session #37 to session #69)\n" .. LOCAL_PLAYER_NAME .. ">erase 37 69",
+			"-- to erase an individual session from the database\n-- (in this case, session #37)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">erase 37",
+			"-- to erase multiple sessions from the database\n-- (in this case, session #37 to session #69)\n"
+				.. LOCAL_PLAYER_NAME
+				.. ">erase 37 69",
 		},
-	}
-
+	},
 }
-local COMMAND_METADATA = {} -- string commandName | alias --> CommandMetadata
-local HORIZONTAL_LINE_WIDTH = 62 -- length of "======" strings
-local NUM_HELP_COLUMNS = 4
-local HELP_COLUMN_WIDTH = math.floor(HORIZONTAL_LINE_WIDTH/NUM_HELP_COLUMNS)
 
 -- init | index command metadata by alias
 for commandName, CommandMetadata in CANONICAL_COMMAND_METADATA do
@@ -324,6 +393,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 	local viewingTestBrowser = false
 	local testBrowserOutput = ""
+
+	local RainbowTweens = {}
 
 	-- private | compile gameplay tests from parameters
 	local function saveTestName(testName)
@@ -453,8 +524,15 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- to avoid an extra newline. I am so sorry.
 		local newlineCharacter = if AnyConsole == TestConsole then "" else "\n"
 
-		AnyConsole.output(newlineCharacter.. string.rep("=", HORIZONTAL_LINE_WIDTH))
-		AnyConsole.output(newlineCharacter .. string.rep("=", math.floor(half)) .. " " .. titleString .. " " .. string.rep("=", math.ceil(half)))
+		AnyConsole.output(newlineCharacter .. string.rep("=", HORIZONTAL_LINE_WIDTH))
+		AnyConsole.output(
+			newlineCharacter
+				.. string.rep("=", math.floor(half))
+				.. " "
+				.. titleString
+				.. " "
+				.. string.rep("=", math.ceil(half))
+		)
 		AnyConsole.output(newlineCharacter .. string.rep("=", HORIZONTAL_LINE_WIDTH))
 	end
 	local function printHorizontalLine()
@@ -664,11 +742,65 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end
 
 	-- public | text coloring commands
+	local function stopRainbowing(_)
+		--[[
+			@post: stop color shifting!! (see rainbow)
+		]]
+		for i, Tween in RainbowTweens do
+			Tween:Cancel()
+			Tween:Destroy()
+		end
+		RainbowTweens = {}
+	end
+	local function rainbow(_, rainbowPeriod, numRainbowSteps)
+		--[[
+			@param: Console
+			@param: nil | number rainbowPeriod
+				- how long it takes to complete one shift.
+			@param: nil | number numRainbowSteps
+				- how many "steps" the color wheel is divided into.
+				- more steps == smoother transitions & more granular color shifting
+			@post: shifts text through every hue in color wheel
+		]]
+
+		stopRainbowing()
+
+		rainbowPeriod = tonumber(rainbowPeriod) or DEFAULT_RAINBOW_PERIOD
+		numRainbowSteps = tonumber(numRainbowSteps) or DEFAULT_RAINBOW_STEPS
+		local rainbowStepPeriod = rainbowPeriod / numRainbowSteps
+
+		-- build tweens
+		for i = 1, numRainbowSteps do
+			RainbowTweens[i] =
+				TweenService:Create(Console.TextBox, TweenInfo.new(rainbowStepPeriod, Enum.EasingStyle.Linear), {
+					TextColor3 = Color3.fromHSV(i / numRainbowSteps, 1, 1),
+				})
+			if i > 1 then
+				RainbowTweens[i - 1].Completed:Connect(function()
+					if RainbowTweens[i] then
+						RainbowTweens[i]:Play()
+					end
+				end)
+			end
+		end
+		RainbowTweens[numRainbowSteps].Completed:Connect(function()
+			if RainbowTweens[1] then
+				RainbowTweens[1]:Play()
+			end
+		end)
+
+		-- init (the defer helps with double-calls to rainbow some... it's kinda buggy :/)
+		task.defer(function()
+			RainbowTweens[1]:Play()
+		end)
+	end
 	local function setTextColor(_, r, g, b)
 		--[[
 			@param: Console (we don't need it)
 			@param: string color
 		]]
+
+		stopRainbowing()
 
 		-- support picking color by name (RETURNS)
 		if tonumber(r) == nil then
@@ -740,9 +872,15 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			local SessionDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
 
 			sessionId = tostring(sessionId)
-			sessionId = "#" .. sessionId .. string.rep(" ", math.max(MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId), 0) + 1) .. " "
+			sessionId = "#"
+				.. sessionId
+				.. string.rep(" ", math.max(MAX_SESSION_ID_STRING_LENGTH - string.len(sessionId), 0) + 1)
+				.. " "
 
-			sessionTimestamp = SessionDateTime:FormatLocalTime("l", "en-us") .. " " .. SessionDateTime:FormatLocalTime("LT", "en-us") .. " "
+			sessionTimestamp = SessionDateTime:FormatLocalTime("l", "en-us")
+				.. " "
+				.. SessionDateTime:FormatLocalTime("LT", "en-us")
+				.. " "
 
 			local userName = ""
 			if UserNames then
@@ -754,9 +892,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 			local testSummary = ""
 			if numPassing and numFailing and numTotal then
-				testSummary = tostring(math.round(10^2 * numPassing / numTotal))
+				testSummary = tostring(math.round(10 ^ 2 * numPassing / numTotal))
 					.. "% passing "
-					.. tostring(math.round(10^2 * (numPassing + numFailing) / numTotal))
+					.. tostring(math.round(10 ^ 2 * (numPassing + numFailing) / numTotal))
 					.. "% complete "
 			end
 
@@ -794,11 +932,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		if testLog == nil then
 			Console.output(
 				"\nFailed to get Test Log for Session #"
-				.. tostring(sessionId)
-				.. " Test #"
-				.. tostring(testIndex)
-				..
-				"\n"
+					.. tostring(sessionId)
+					.. " Test #"
+					.. tostring(testIndex)
+					.. "\n"
 			)
 			return
 		end
@@ -841,11 +978,11 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		Console.output("\n" .. Timestamp:FormatLocalTime("LLLL", "en-us"))
 		Console.output(
 			"\nPassing: "
-			.. tostring(SessionData.Passing)
-			.. " Failing: "
-			.. tostring(SessionData.Failing)
-			.. " Total: "
-			.. tostring(SessionData.Total)
+				.. tostring(SessionData.Passing)
+				.. " Failing: "
+				.. tostring(SessionData.Failing)
+				.. " Total: "
+				.. tostring(SessionData.Total)
 		)
 
 		if SessionData.UserNames then
@@ -860,13 +997,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		for testIndex, TestScore in SessionData.Summary do
 			Console.output(
 				"\n[Test #"
-				.. tostring(testIndex)
-				.. "] - Passing: "
-				.. tostring(TestScore.Passing)
-				.. " Failing: "
-				.. tostring(TestScore.Failing)
-				.. " Total: "
-				.. tostring(TestScore.Total)
+					.. tostring(testIndex)
+					.. "] - Passing: "
+					.. tostring(TestScore.Passing)
+					.. " Failing: "
+					.. tostring(TestScore.Failing)
+					.. " Total: "
+					.. tostring(TestScore.Total)
 			)
 		end
 
@@ -899,7 +1036,13 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local sessionTimestamp = GetSessionTimestampRemote:InvokeServer(sessionId)
 		if sessionTimestamp then
 			local LocalDateTime = DateTime.fromUnixTimestamp(sessionTimestamp)
-			Console.output("\nSession #" .. tostring(sessionId) .. " ended on " .. LocalDateTime:FormatLocalTime("LLLL", "en-us") .. "\n")
+			Console.output(
+				"\nSession #"
+					.. tostring(sessionId)
+					.. " ended on "
+					.. LocalDateTime:FormatLocalTime("LLLL", "en-us")
+					.. "\n"
+			)
 		else
 			Console.output("\nSession #" .. tostring(sessionId) .. " doesn't exist\n")
 		end
@@ -948,7 +1091,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			}
 
 			if testIsFinished(testIndex) then
-				if numPassing >= numTotal then 
+				if numPassing >= numTotal then
 					SessionState.Passing += 1
 				else
 					SessionState.Failing += 1
@@ -995,7 +1138,9 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		-- immediate feedback for user
 		if maxSessionId then
-			Console.output("\nErasing Sessions from #" .. tostring(minSessionId) .. " to #" .. tostring(maxSessionId) .. "...")
+			Console.output(
+				"\nErasing Sessions from #" .. tostring(minSessionId) .. " to #" .. tostring(maxSessionId) .. "..."
+			)
 		else
 			Console.output("\nErasing Session #" .. tostring(minSessionId) .. "...")
 		end
@@ -1045,7 +1190,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		if anyCommandName then
 			anyCommandName = tostring(anyCommandName)
 
-
 			-- what if that command doesn't exist? (RETURNS)
 			local CommandMetadata = COMMAND_METADATA[anyCommandName]
 			if CommandMetadata == nil then
@@ -1055,12 +1199,15 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 					return
 				end
 
-				Console.output("\nThere's no command named \"" .. tostring(anyCommandName) .. "\"\n")
+				Console.output("\nThere's no command named \"" .. tostring(anyCommandName) .. '"\n')
 				return
 			end
 
 			Console.output("\n")
-			printTitleBlock(Console, "'" .. (if CommandMetadata.Aliases then CommandMetadata.Aliases[1] else anyCommandName) .. "' command")
+			printTitleBlock(
+				Console,
+				"'" .. (if CommandMetadata.Aliases then CommandMetadata.Aliases[1] else anyCommandName) .. "' command"
+			)
 
 			if CommandMetadata.Description then
 				Console.output("\n")
@@ -1080,8 +1227,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 					end
 				end
 				for argName, ArgTypes in CommandMetadata.Arguments do
-					
-					
 				end
 			end
 
@@ -1131,7 +1276,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		Console.output("\n")
 		printHorizontalLine()
-		Console.output("\n\nType \"help\" (without quotes) followed by the name of a command for specific help.\n")
+		Console.output('\n\nType "help" (without quotes) followed by the name of a command for specific help.\n')
 	end
 
 	-- public | encapsulate all commands
@@ -1163,6 +1308,8 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- text colors
 		color = setTextColor,
 		palette = viewTextColors,
+		rainbow = rainbow,
+		stop = stopRainbowing,
 
 		-- database browsing
 		session = session,

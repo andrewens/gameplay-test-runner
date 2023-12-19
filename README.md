@@ -65,3 +65,4 @@ It's all through a Command Line Interface, btw.
 * Autocomplete / hints for command completion
   * Probably refactor terminal to add commands in JSON format including documentation/arguments for automatic `help` support
 * Fix the text getting cut off by scroll bar `>:(`
+* Make gameplay test runner not yield lol
