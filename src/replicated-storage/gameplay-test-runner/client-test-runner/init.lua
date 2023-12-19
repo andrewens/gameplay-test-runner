@@ -101,7 +101,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	-- answering gameplay test questions
 	yes = {
 		Description = "Answers 'yes' to a question in a gameplay test, which marks the question as passing.",
-		Aliases = { "yes", "y" },
+		Aliases = { "yes", "y", "yeah", "yep", "ya", "yesh", "mhm", "ye", "yea", "affirmative", "yuh", },
 		Usage = {
 			"-- after a test asks you if something works,\n-- and it does actually work\n"
 				.. LOCAL_PLAYER_NAME
@@ -113,7 +113,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	},
 	no = {
 		Description = "Answers 'no' to a question in a gameplay test, which marks the question as failing.",
-		Aliases = { "no", "n" },
+		Aliases = { "no", "n", "nope", "noe", "nop", "nah", "na", "negative", },
 		Usage = {
 			"-- after a test asks you if something works,\n-- and it does NOT work\n"
 				.. LOCAL_PLAYER_NAME
@@ -1404,18 +1404,18 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 			printTitleBlock(TestConsole, "FINISHED TEST #" .. tostring(i))
 
-			TestConsole.output("\n")
-			TestConsole.output("\n" .. testName .. " score:")
-			TestConsole.output("\n    " .. tostring(TestStatusPassing[i]) .. " passing")
-			TestConsole.output("\n    " .. tostring(TestStatusFailing[i]) .. " failing")
-			TestConsole.output("\n    " .. tostring(TestStatusFailing[i] + TestStatusPassing[i]) .. " total")
+			TestConsole.output()
+			TestConsole.output("" .. testName .. " score:")
+			TestConsole.output("    " .. tostring(TestStatusPassing[i]) .. " passing")
+			TestConsole.output("    " .. tostring(TestStatusFailing[i]) .. " failing")
+			TestConsole.output("    " .. tostring(TestStatusFailing[i] + TestStatusPassing[i]) .. " total")
+			TestConsole.output()
 
-			TestConsole.output("\n")
 			if i < #GameplayTestOrder then
-				TestConsole.output("\nType 'next' (without quotes) to continue.\n")
+				TestConsole.output("Type 'next' (without quotes) to continue.\n")
 			else
-				TestConsole.output("\nThere are no more tests. You did it!\n")
-				TestConsole.output("\nType 'summary' (without quotes) to see your results.\n")
+				TestConsole.output("There are no more tests. You did it!")
+				TestConsole.output("Type 'summary' (without quotes) to see your results.\n")
 			end
 
 			TestConsole.setCommandLinePrompt() -- defaults to "PlayerName>"
