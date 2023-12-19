@@ -24,7 +24,6 @@ local DEFAULT_CONFIG = {
 local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
 local BEGINNING_OF_TESTS_MESSAGE = "You're already at the first test >:^("
-
 local DEFAULT_TEXT_COLORS = {
 	-- good colors
 	jade = Color3.fromRGB(123, 245, 123),
@@ -46,6 +45,224 @@ local DEFAULT_TEXT_COLORS = {
 }
 local MAX_SESSION_ID_STRING_LENGTH = 4 -- max number of expected digits for a session id, for formatting reasons
 local AUTO_SAVE_RATE = 5 -- seconds between auto-saves
+local LOCAL_PLAYER_NAME = LocalPlayer.Name
+local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
+	--[[
+		string commandName --> {
+			Description: nil | string desc,
+			Aliases: nil | { string alternateCommandName },
+				--> always put the "official"/canonical command name first
+			Arguments: nil | { string argumentName: { string typeName } },
+			Usage: nil | { string exampleUsage }
+		}
+	]]
+
+	-- universal commands
+	help = {
+		Description = "Lists all commands. If `commandName` is specified, prints documentation for that command.",
+		Aliases = { "help", "h", },
+		Arguments = {
+			{
+				Name = "commandName",
+				Types = { "string", "nil" }
+			}
+		},
+		Usage = {
+			"-- list all commands\n" .. LOCAL_PLAYER_NAME .. ">help",
+			"-- list help for a specific command\n-- (in this case, the 'next' command)\n" .. LOCAL_PLAYER_NAME .. ">help next"
+		}
+	},
+	clear = {
+		Description = "Redraws the terminal screen and clears extraneous commands that haven't modified the gameplay test state. Gameplay test data, test summaries, and database entries will not be cleared.",
+		Aliases = { "clear", "c", },
+		Usage = {
+			"-- let's say you've typed a lot of 'next' commands\n-- and you want to clear them to look at the\n-- current gameplay test better...\n" .. LOCAL_PLAYER_NAME .. ">clear"
+		}
+	},
+	back = {
+		Description = "Takes you back to the previous screen. If viewing a gameplay test, takes you to previous test.",
+		Aliases = { "back", "b", },
+		Usage = {
+			"-- take me back!\n" .. LOCAL_PLAYER_NAME .. ">back"
+		}
+	},
+
+	-- answering gameplay test questions
+	yes = {
+		Description = "Answers 'yes' to a question in a gameplay test, which marks the question as passing.",
+		Aliases = { "yes", "y" },
+		Usage = {
+			"-- after a test asks you if something works,\n-- and it does actually work\n" .. LOCAL_PLAYER_NAME .. "/someTest>yes",
+			"-- after a test asks you if something works,\n-- and it does NOT work\n" .. LOCAL_PLAYER_NAME.."/someTest>no",
+		}
+	},
+	no = {
+		Description = "Answers 'no' to a question in a gameplay test, which marks the question as failing.",
+		Aliases = { "no", "n" },
+		Usage = {
+			"-- after a test asks you if something works,\n-- and it does NOT work\n" .. LOCAL_PLAYER_NAME .. "/someTest>no",
+			"-- after a test asks you if something works,\n-- and it does actually work\n" .. LOCAL_PLAYER_NAME .. "/someTest>yes",
+		}
+	},
+	answer = {
+		Description = "Generalized version of 'yes' and 'no' commands -- answers a gameplay test question. If `response` is equal to 'yes', it marks the question as a yes/pass, otherwise it marks it as a no/fail.",
+		Aliases = { "answer", "ok", },
+		Arguments = {
+			{
+				Name = "response",
+				Types = { "string", "boolean", "nil" }
+			}
+		},
+		Usage = {
+			"-- answer a gameplay test question as a 'yes'\n" .. LOCAL_PLAYER_NAME .. "/someTest>answer yes",
+			"-- answer a gameplay test question as a 'no'\n" .. LOCAL_PLAYER_NAME .. "/someTest>answer no",
+		}
+	},
+
+	-- test navigation
+	next = {
+		Description = "Takes you to the next gameplay test. The test you were running before gets paused and can be returned to at any time.",
+		Aliases = { "next", "ne", "skip", },
+		Usage = {
+			"-- skip current test and go to the next one\n" .. LOCAL_PLAYER_NAME ..">next"
+		}
+	},
+	previous = {
+		Description = "Takes you to the previous gameplay test. The test you were running before gets paused and can be returned to at any time.",
+		Aliases = { "previous", "prev", "p", },
+		Usage = {
+			"-- go back to previous test\n" .. LOCAL_PLAYER_NAME.. ">prev"
+		}
+	},
+	index = {
+		Description = "Generalized version of 'next' and 'previous' command -- skips you backward or forward a number of gameplay tests.\n\nIf `newTestIndex` is just a number, it will go to the gameplay test with that index.\nIf `newTestIndex` has a '+' or a '-' in front of a number, it will skip forward/backward that number of gameplay tests respectively.",
+		Arguments = {
+			{
+				Name = "newTestIndex",
+				Types = { "string", "number" }
+			}
+		},
+		Aliases = { "index", "goto", "test", "go", "setTestIndex", }
+	},
+
+	-- summary
+	summary = {
+		Description = "View list of all gameplay tests in your current session, and their pass/fail/completion scores. Use 'back' to exit summary.",
+		Aliases = { "summary", "s", "sum",}
+	},
+
+	-- text coloring
+	color = {
+		Description = "Changes the terminal text color. You can specify a color name or three numbers corresponding to R, G, and B values from 0 to 255.\n\nColor names are also command names! The 'palette' command prints all supported color names.",
+		Aliases = { "color", "textcolor", "<any supported color name>" },
+		Arguments = {
+			{
+				Name = "colorName | red",
+				Types = { "string", "number", },
+			},
+			{
+				Name = "green",
+				Types = { "number", "nil" },
+			},
+			{
+				Name = "blue",
+				Types = { "number", "nil" },
+			},
+		},
+		Usage = {
+			"-- view a list of all colors\n" .. LOCAL_PLAYER_NAME .. ">palette",
+			"-- set text color to cyan\n" .. LOCAL_PLAYER_NAME .. ">color cyan",
+			"-- set text color to cyan, but lazily\n" .. LOCAL_PLAYER_NAME .. ">cyan",
+			"-- set text color to a specific RGB value\n-- (numbers must be between 0 and 255)\n" .. LOCAL_PLAYER_NAME .. ">color 123 0 255"
+		}
+	},
+	palette = {
+		Description = "Prints a list of default color names to terminal. Type any color name as a command to change the terminal's text color.",
+		Aliases = { "palette", "colors", },
+		Usage = {
+			"-- view a list of all default colors\n" .. LOCAL_PLAYER_NAME .. ">palette",
+			"-- set text color to cyan\n" .. LOCAL_PLAYER_NAME .. ">cyan",
+		}
+	},
+
+	-- database browsing
+	session = {
+		Description = "A session begins when a player joins the game, and ends when they leave. Every session (that is at least partially completed) gets saved to a database.\n\nTo discover your current session's unique id, provide no arguments. The id will be nil if the session hasn't been saved yet.\nTo view a summary of any given session in the database, provide the `sessionId` argument.\nTo view the logs of a specific test in a session, provide both the `sessionId` and `testIndex` arguments.",
+		Aliases = { "session", "sesh", "se" },
+		Arguments = {
+			{
+				Name = "sessionId",
+				Types = { "nil", "integer" },
+			},
+			{
+				Name = "testIndex",
+				Types = { "nil", "integer" },
+			},
+		},
+		Usage = {
+			"-- to find out your current session's id...\n-- (if it prints nil, your session hasn't been saved yet.)\n" .. LOCAL_PLAYER_NAME .. ">session",
+			"-- to view any session's summary...\n-- (in this case, session #37)\n" .. LOCAL_PLAYER_NAME .. ">session 37",
+			"-- to view the logs of session #37's 2nd test\n" .. LOCAL_PLAYER_NAME .. ">session 37 2",
+		},
+	},
+	browse = {
+		Description = "Prints list of most recent test sessions from database. Use the 'session' command to see more detailed info of any given test session. Use the 'more' command to fetch more sessions from the database.",
+		Aliases = { "browse", "br", },
+		Usage = {
+			"-- to see a list of most recent test sessions\n" .. LOCAL_PLAYER_NAME .. ">browse",
+			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n" .. LOCAL_PLAYER_NAME .. ">more"
+		},
+	},
+	more = {
+		Description = "Fetches more sessions for the database browser. See 'browse' command for more info.",
+		Aliases = { "more", "m" },
+		Usage = {
+			"-- to see a list of most recent test sessions\n" .. LOCAL_PLAYER_NAME .. ">browse",
+			"-- the database only pulls 50 or so sessions at a time.\n-- to look further down the list...\n" .. LOCAL_PLAYER_NAME .. ">more"
+		}
+	},
+
+	-- database writing
+	save = {
+		Description = "Any somewhat completed session state will be automatically saved within " .. AUTO_SAVE_RATE .. " seconds of being changed. However, if you want to manually save your session state, use this command. Note that session states with no finished tests will always fail to save, to avoid database clutter.",
+		Aliases = { "save", "sa", },
+		Usage = {
+			"-- to manually save session state\n" .. LOCAL_PLAYER_NAME .. ">save"
+		},
+	},
+	erase = {
+		Description = "Erase a session, or multiple sessions, from the database. Admin permissions required!\n\nTo erase an individual session, provide only the `firstSessionId` argument.To erase a range of multiple sessions, include the `lastSessionId` argument as well.",
+		Aliases = { "erase", "e" },
+		Arguments = {
+			{
+				Name = "firstSessionId",
+				Types = { "integer", },
+			},
+			{
+				Name = "lastSessionId",
+				Types = { "nil", "integer" },
+			},
+		},
+		Usage = {
+			"-- to erase an individual session from the database\n-- (in this case, session #37)\n" .. LOCAL_PLAYER_NAME .. ">erase 37",
+			"-- to erase multiple sessions from the database\n-- (in this case, session #37 to session #69)\n" .. LOCAL_PLAYER_NAME .. ">erase 37 69",
+		},
+	}
+
+}
+local COMMAND_METADATA = {} -- string commandName | alias --> CommandMetadata
+local HORIZONTAL_LINE_WIDTH = 62 -- length of "======" strings
+local NUM_HELP_COLUMNS = 4
+local HELP_COLUMN_WIDTH = math.floor(HORIZONTAL_LINE_WIDTH/NUM_HELP_COLUMNS)
+
+-- init | index command metadata by alias
+for commandName, CommandMetadata in CANONICAL_COMMAND_METADATA do
+	if CommandMetadata.Aliases then
+		for i, alias in CommandMetadata.Aliases do
+			COMMAND_METADATA[alias] = CommandMetadata
+		end
+	end
+end
 
 -- public
 return function(ScrollingFrame, GameplayTests, CONFIG)
@@ -216,6 +433,37 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		]]
 		return TestThreads[testIndex] and coroutine.status(TestThreads[testIndex]) == "dead"
 	end
+	local function printTitleBlock(AnyConsole, titleString)
+		--[[
+			@param: Console | TestConsole
+				- if you pick TestConsole, it will save it to the current gameplay test's log
+				- otherwise nothing gets saved
+			@param: string titleString
+				- text to be displayed inside the "====="
+			@post: prints one of these guys
+
+			=============================================
+			=============== HELLO THERE =================
+			=============================================
+		]]
+		titleString = string.upper(titleString)
+		local half = ((HORIZONTAL_LINE_WIDTH - string.len(titleString)) / 2) - 1
+
+		-- TestConsole automatically applies a new line character so i have to do this
+		-- to avoid an extra newline. I am so sorry.
+		local newlineCharacter = if AnyConsole == TestConsole then "" else "\n"
+
+		AnyConsole.output(newlineCharacter.. string.rep("=", HORIZONTAL_LINE_WIDTH))
+		AnyConsole.output(newlineCharacter .. string.rep("=", math.floor(half)) .. " " .. titleString .. " " .. string.rep("=", math.ceil(half)))
+		AnyConsole.output(newlineCharacter .. string.rep("=", HORIZONTAL_LINE_WIDTH))
+	end
+	local function printHorizontalLine()
+		--[[
+			@post: prints one of these guys
+			=============================================
+		]]
+		Console.output("\n" .. string.rep("=", HORIZONTAL_LINE_WIDTH))
+	end
 
 	-- public | test output commands
 	local function logCommand(commandName)
@@ -295,7 +543,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		-- display cheeky message if we're at the end of the tests
 		if currentTestIndex >= #GameplayTestOrder then
-			Console.output("\n\n" .. END_OF_TESTS_MESSAGE .. "\n")
+			Console.output("\n" .. END_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
 		setTestIndex(nil, "+1")
@@ -306,14 +554,14 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		]]
 		-- display cheeky message if we're at the very beginning of the tests
 		if currentTestIndex <= 1 then
-			Console.output("\n\n" .. BEGINNING_OF_TESTS_MESSAGE .. "\n")
+			Console.output("\n" .. BEGINNING_OF_TESTS_MESSAGE .. "\n")
 			return
 		end
 		setTestIndex(nil, "-1")
 	end
 
 	-- public | response commands for "ask" prompts
-	local function nextStep(_, response)
+	local function answerQuestion(_, response)
 		--[[
 			@param: Console (this is how Terminal passes args to command functions -- we don't need it in this case.)
 			@param: boolean | string response
@@ -324,7 +572,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		-- convert response to boolean in case of use by command line
 		-- idk why i care about this tbh
 		if typeof(response) ~= "boolean" then
-			response = response == "yes"
+			response = (response == "yes" or response == "true")
 		end
 
 		-- don't do anything if viewing summary!
@@ -356,17 +604,17 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		TestConsole.output()
 		coroutine.resume(TestThreads[currentTestIndex])
 	end
-	local function yes()
+	local function yes(_)
 		--[[
 			@post: gives a "yes" response to the last ask and resumes next step in current test
 		]]
-		nextStep(nil, true)
+		answerQuestion(_, true)
 	end
-	local function no()
+	local function no(_)
 		--[[
 			@post: gives a "no" response to the last ask and resumes next step in current test
 		]]
-		nextStep(nil, false)
+		answerQuestion(_, false)
 	end
 
 	-- public | summary commands
@@ -557,13 +805,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 		-- dump data in console
 		Console.clear()
-		Console.output("\n=============================================================")
-		Console.output("\n================= SESSION #" .. tostring(sessionId) .. " TEST #" .. tostring(testIndex))
-		Console.output("\n=============================================================")
+		printTitleBlock(Console, "SESSION #" .. tostring(sessionId) .. " TEST #" .. tostring(testIndex))
 		Console.output(testLog)
-		Console.output("\n=============================================================")
-		Console.output("\n=================== BROWSING MODE ===========================")
-		Console.output("\n=============================================================\n")
+		printTitleBlock(Console, "BROWSING MODE")
+		Console.output("\n")
 	end
 	local function printSessionSummary(_, sessionId)
 		--[[
@@ -664,7 +909,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			@param: Console (unnecessary)
 			@param: int | string | nil sessionId
 			@post: if sessionId is nil, prints the current session id of this game/test session
-			@post: otherwise, prints the timestamp of the given session id
 		]]
 		if testIndex then
 			printTestLog(_, sessionId, testIndex)
@@ -790,116 +1034,158 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			redrawCurrentTest()
 		end
 	end
+	local function help(_, anyCommandName)
+		--[[
+			@param: nil | string commandName
+			@post: outputs list of all commands to console
+			@post: if command name specified, specifies how to use that command
+		]]
+
+		-- help with a specific command (RETURNS)
+		if anyCommandName then
+			anyCommandName = tostring(anyCommandName)
+
+
+			-- what if that command doesn't exist? (RETURNS)
+			local CommandMetadata = COMMAND_METADATA[anyCommandName]
+			if CommandMetadata == nil then
+				-- it might be a color name, since color names are commands too.
+				if DEFAULT_TEXT_COLORS[anyCommandName] then
+					help(_, "color")
+					return
+				end
+
+				Console.output("\nThere's no command named \"" .. tostring(anyCommandName) .. "\"\n")
+				return
+			end
+
+			Console.output("\n")
+			printTitleBlock(Console, "'" .. (if CommandMetadata.Aliases then CommandMetadata.Aliases[1] else anyCommandName) .. "' command")
+
+			if CommandMetadata.Description then
+				Console.output("\n")
+				Console.output("\n" .. CommandMetadata.Description)
+			end
+
+			if CommandMetadata.Arguments then
+				Console.output("\n")
+				Console.output("\nARGUMENTS")
+				for _, ArgumentData in CommandMetadata.Arguments do
+					Console.output("\n    " .. ArgumentData.Name .. ": ")
+					for i, typeName in ArgumentData.Types do
+						Console.output(typeName .. " ")
+						if i < #ArgumentData.Types then
+							Console.output("| ")
+						end
+					end
+				end
+				for argName, ArgTypes in CommandMetadata.Arguments do
+					
+					
+				end
+			end
+
+			if CommandMetadata.Aliases then
+				Console.output("\n")
+				Console.output("\nALIASES\n    ")
+				for i, alias in CommandMetadata.Aliases do
+					if i > 1 then
+						Console.output(", ")
+					end
+					Console.output(alias)
+				end
+			end
+
+			if CommandMetadata.Usage then
+				Console.output("\n")
+				Console.output("\nEXAMPLE USAGE")
+				for i, example in CommandMetadata.Usage do
+					Console.output("\n")
+					local Lines = string.split(example, "\n")
+					for j, line in Lines do
+						Console.output("\n    " .. line)
+					end
+				end
+			end
+
+			Console.output("\n")
+			printHorizontalLine()
+			Console.output("\n")
+
+			return
+		end
+
+		-- list all commands in a sweet, sweet grid
+		Console.output("\n")
+		printTitleBlock(Console, "ALL COMMANDS")
+		Console.output("\n")
+
+		local i = 0
+		for commandName, _ in CANONICAL_COMMAND_METADATA do
+			if i % NUM_HELP_COLUMNS == 0 then
+				Console.output("\n")
+			end
+			i += 1
+			Console.output(commandName .. string.rep(" ", HELP_COLUMN_WIDTH - string.len(commandName)))
+		end
+
+		Console.output("\n")
+		printHorizontalLine()
+		Console.output("\n\nType \"help\" (without quotes) followed by the name of a command for specific help.\n")
+	end
 
 	-- public | encapsulate all commands
 	local TestCommands = {
-		-- univeral commands
+		--[[
+			string commandName --> function(Console, ...)
+
+			Only put the canonical command name here.
+			The aliases are automatically applied below.
+		]]
+		-- universal
 		back = back,
-		b = back,
-		c = clear,
 		clear = clear,
-		redraw = clear,
+		help = help,
 
-		-- navigating to specific tests
-		test = setTestIndex,
-		goto = setTestIndex,
-		go = setTestIndex,
-		number = setTestIndex,
-		["#"] = setTestIndex,
-
-		ne = nextTest,
+		-- test navigation
+		index = setTestIndex,
 		next = nextTest,
-		skip = nextTest,
-
-		p = prevTest,
-		prev = prevTest,
 		previous = prevTest,
 
-		-- responses to "ask" questions
+		-- test responses
 		yes = yes,
-		y = yes,
-		yeah = yes,
-		ya = yes,
-		yah = yes,
-		yahh = yes,
-		yep = yes,
-		yesh = yes,
-		yus = yes,
-		yas = yes,
-		affirmative = yes,
-		mhm = yes,
-		ye = yes,
-		yuh = yes,
-		yuhh = yes,
-		yuhhh = yes,
-		yuhhhh = yes,
-		yuhhhhh = yes,
-		yuhhhhhh = yes,
-
 		no = no,
-		n = no,
-		nah = no,
-		nope = no,
-		negative = no,
-		idk = no,
-		noe = no,
-		nop = no,
+		answer = answerQuestion,
 
-		nextstep = nextStep,
-		step = nextStep,
-		ok = nextStep,
-
-		-- navigating to summary
+		-- summary
 		summary = viewSummary,
-		s = viewSummary,
-		sum = viewSummary,
-		sumsum = viewSummary,
-		status = viewSummary,
 
 		-- text colors
-		setcolor = setTextColor,
-		textcolor = setTextColor,
-		text = setTextColor,
 		color = setTextColor,
-
 		palette = viewTextColors,
-		colors = viewTextColors,
-
-		-- basic database reading
-		sessionid = printSessionId,
-		id = printSessionId,
-
-		sessiontime = printSessionTimestamp,
-		timestamp = printSessionTimestamp,
-
-		session = session,
-		se = session,
 
 		-- database browsing
-		more = browseMoreSessionTimestamps,
-		m = browseMoreSessionTimestamps,
-
+		session = session,
 		browse = browseSessionTimestamps,
-		br = browseSessionTimestamps,
-
-		sessionsummary = printSessionSummary,
-		["session-summary"] = printSessionSummary,
-
-		["test-log"] = printTestLog,
-		log = printTestLog,
+		more = browseMoreSessionTimestamps,
 
 		-- database writing
 		save = saveCommand,
-		sa = saveCommand,
-
 		erase = eraseSession,
-		["erase-session"] = eraseSession,
 	}
+	for commandName, commandFunction in TestCommands do
+		local CommandMetadata = COMMAND_METADATA[commandName]
+		if CommandMetadata and CommandMetadata.Aliases then
+			for i, alias in CommandMetadata.Aliases do
+				TestCommands[alias] = commandFunction
+			end
+		end
+	end
 	for textColor, _ in DEFAULT_TEXT_COLORS do
 		-- every default text color is a command
 		-- beware of collisions!
 		TestCommands[textColor] = function()
-			setTextColor(nil, textColor)
+			setTextColor(Console, textColor)
 		end
 	end
 
@@ -963,26 +1249,29 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 		local testFunction = GameplayTestFunctions[testName]
 		TestThreads[i] = coroutine.create(function()
 			TestConsole.clear()
-			TestConsole.output("\nBEGIN TEST #" .. tostring(i) .. ' "' .. testName .. '"\n')
+			printTitleBlock(TestConsole, "TEST #" .. tostring(i) .. ': "' .. testName .. '"')
+			TestConsole.output() -- newline
+
 			TestConsole.setCommandLinePrompt(LocalPlayer.Name .. "/" .. testName .. ">")
 			testFunction(TestConsole)
-			TestConsole.output(
-				"\nFINISHED TEST #"
-					.. tostring(i)
-					.. ' "'
-					.. testName
-					.. '"\nPASSED '
-					.. tostring(TestStatusPassing[i])
-					.. " OUT OF "
-					.. tostring(TestStatusPassing[i] + TestStatusFailing[i])
-					.. " QUESTIONS\n"
-					.. if i < #GameplayTestOrder then '\nType "next" (without quotes) to continue.\n' else ""
-			)
-			TestConsole.setCommandLinePrompt() -- defaults to PlayerName>
 
-			if i >= #GameplayTestOrder then
-				TestConsole.output("\nThis is the last gameplay test. Type \"summary\" (without quotes) to see your results.\n")
+			printTitleBlock(TestConsole, "FINISHED TEST #" .. tostring(i))
+
+			TestConsole.output("\n")
+			TestConsole.output("\n" .. testName .. " score:")
+			TestConsole.output("\n    " .. tostring(TestStatusPassing[i]) .. " passing")
+			TestConsole.output("\n    " .. tostring(TestStatusFailing[i]) .. " failing")
+			TestConsole.output("\n    " .. tostring(TestStatusFailing[i] + TestStatusPassing[i]) .. " total")
+
+			TestConsole.output("\n")
+			if i < #GameplayTestOrder then
+				TestConsole.output("\nType 'next' (without quotes) to continue.\n")
+			else
+				TestConsole.output("\nThere are no more tests. You did it!\n")
+				TestConsole.output("\nType 'summary' (without quotes) to see your results.\n")
 			end
+
+			TestConsole.setCommandLinePrompt() -- defaults to "PlayerName>"
 		end)
 	end
 

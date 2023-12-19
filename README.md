@@ -31,12 +31,11 @@ It's all through a Command Line Interface, btw.
 * ~~Don't save 0% completed tests~~ `Dec 18, 2023`
 * ~~Display users in session summary!~~ `Dec 18, 2023`
 * ~~Erase tests~~ `Dec 18, 2023`
+* ~~Help command~~ `Dec 19, 2023`
 * Support player leaving comments
 * Option to restart a test
-* Help command
 * Support returning Maid tasks from server test initializers
 * Dump error messages in test output (?)
-
 
 ### WISHLIST
 * Exit test-response mode after viewing a session summary
@@ -52,3 +51,17 @@ It's all through a Command Line Interface, btw.
   * X to close
 * Specify a (rich) text color for Console.output 
 * Status bar on bottom of terminal window
+* Separate questions & pass/fail functionality
+  * A set of questions for different data types: boolean (yes/no), integer or range, float, multiple choice, etc
+  * A specific method like "it" from TestEZ: a string defining expected behavior, and whether it passes or fails (based on results from questions)
+  * A "describe" method to allow for nesting features
+  * Test summaries display the tree of features and their pass/fail (+)/(-) status
+* A mechanism to fill the exact width of the terminal with = or - characters, even after resizing...
+  * Maybe also mechanisms to control text wrapping with an indent or something idk
+  * Also a mechanism for filling in a word, centered, in a line
+* TestConsole.log (saves to test state), Console.print (automatic newline + infinite # of args), Console.out
+* Refactor with an AppState proxy table and a million helper functions!
+* Fix the bad text resizing >_<
+* Autocomplete / hints for command completion
+  * Probably refactor terminal to add commands in JSON format including documentation/arguments for automatic `help` support
+* Fix the text getting cut off by scroll bar `>:(`
