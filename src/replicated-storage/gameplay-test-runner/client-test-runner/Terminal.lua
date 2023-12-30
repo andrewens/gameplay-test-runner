@@ -26,7 +26,7 @@ return function(ScrollingFrame, Commands)
 	]]
 
 	-- const
-	local NUM_EXTRA_LINES = 13
+	local NUM_EXTRA_LINES = 4
 
 	-- var
 	local TerminalMaid = Maid()

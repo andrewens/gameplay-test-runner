@@ -1468,6 +1468,7 @@ return function(GameplayTests, CONFIG)
 	Console.TextBox.TextColor3 = Color3.new(1, 1, 1)
 	Console.TextBox.Font = Enum.Font.Code
 	Console.TextBox.BackgroundTransparency = 1
+	Console.TextBox.Size = UDim2.new(1, 0, 1, 0) -- hacky
 
 	StatusBar.TextSize = 18
 	StatusBar.TextColor3 = Color3.new(1, 1, 1)
