@@ -3,9 +3,12 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
-local GameplayTestsFolder = script.Parent:FindFirstChild("gameplay-tests")
 
 local GameplayTestRunner = require(ReplicatedStorage:FindFirstChild("gameplay-test-runner"))
+
+--[[
+-- dependency
+local GameplayTestsFolder = script.Parent:FindFirstChild("gameplay-tests")
 
 -- private
 local function test3(TestConsole)
@@ -36,6 +39,29 @@ ScrollingFrame.Size = UDim2.new(0, 600, 1, 0)
 ScrollingFrame.Parent = ScreenGui
 
 local TestRunner = GameplayTestRunner(ScrollingFrame, GameplayTests, CONFIG)
+
+-- styling
+ScrollingFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+ScrollingFrame.BorderSizePixel = 0
+TestRunner.TextBox.TextSize = 18
+TestRunner.TextBox.TextColor3 = Color3.new(1, 1, 1)
+TestRunner.TextBox.Font = Enum.Font.Code
+TestRunner.TextBox.BackgroundTransparency = 1
+--]]
+
+-- dependency
+local GameplayTests = script.Parent:FindFirstChild("christmas-ornament-tests")
+local CONFIG = require(script.Parent:FindFirstChild("christmas-config"))
+
+-- init
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = LocalPlayer.PlayerGui
+
+local ScrollingFrame = Instance.new("ScrollingFrame")
+ScrollingFrame.Size = UDim2.new(0, 400, 1, 0)
+ScrollingFrame.Parent = ScreenGui
+
+local TestRunner = GameplayTestRunner(ScrollingFrame, {GameplayTests}, CONFIG)
 
 -- styling
 ScrollingFrame.BackgroundColor3 = Color3.new(0, 0, 0)

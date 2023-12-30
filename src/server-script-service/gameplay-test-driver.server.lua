@@ -1,9 +1,12 @@
 -- dependency
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local ServerTestInitializersFolder = script.Parent:FindFirstChild("server-test-initializers")
 
 local GameplayTestRunner = require(ReplicatedStorage:FindFirstChild("gameplay-test-runner"))
+
+--[[
+-- dependency
+local ServerTestInitializersFolder = script.Parent:FindFirstChild("server-test-initializers")
 
 -- private
 local function test2()
@@ -23,4 +26,14 @@ local CONFIG = {
 }
 Players.PlayerAdded:Connect(function(Player)
 	GameplayTestRunner.initialize(ServerTestInitializers, CONFIG)
+end)
+--]]
+
+-- dependency
+local ServerTestInitializersFolder = script.Parent:FindFirstChild("christmas-ornament-tests")
+local CONFIG = require(script.Parent:FindFirstChild("christmas-config"))
+
+-- init
+Players.PlayerAdded:Connect(function(Player)
+	GameplayTestRunner.initialize({ ServerTestInitializersFolder }, CONFIG)
 end)

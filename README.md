@@ -37,6 +37,9 @@ It's all through a Command Line Interface, btw.
 * Support returning Maid tasks from server test initializers
 * Dump error messages in test output (?)
 
+### BUGS
+* aliases for `no` command don't work for some reason
+
 ### WISHLIST
 * Exit test-response mode after viewing a session summary
 * Display session database like a spreadsheet with column names and good spacing
