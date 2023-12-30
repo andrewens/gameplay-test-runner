@@ -41,7 +41,7 @@ It's all through a Command Line Interface, btw.
 
 ### BUGS
 * aliases for `no` command don't work for some reason
-* Fix the bad text resizing >_<
+* ~~Fix the bad text resizing >_<~~ `Dec 30, 2023`
 
 ### WISHLIST
 * Exit test-response mode after viewing a session summary

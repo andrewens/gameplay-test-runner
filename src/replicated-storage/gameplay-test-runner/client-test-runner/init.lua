@@ -22,7 +22,7 @@ local DEFAULT_CONFIG = {
 	PRIORITY_TESTS = {},
 	ONLY_RUN_PRIORITY_TESTS = false,
 	TEST_NAME_TO_SERVER_INITIALIZER = {},
-	CONSOLE_TOGGLE_KEYS = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
+	CONSOLE_TOGGLE_KEYS = { Enum.KeyCode.LeftControl, },
 }
 local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
@@ -561,7 +561,16 @@ return function(GameplayTests, CONFIG)
 
 		consoleIsFocused = isActive
 
-		StatusBar.Text = if isActive then "Hide console" else "Show console"
+		local text = (if isActive then "Hide console" else "Show console") .. " ("
+		for i, keyCode in CONSOLE_TOGGLE_KEYS do
+			if i > 1 then
+				text = text .. ", "
+			end
+			text = text .. string.upper(keyCode.Name)
+		end
+		text = text .. ")"
+
+		StatusBar.Text = text
 
 		if isActive then
 			Console.TextBox:CaptureFocus()
@@ -1463,6 +1472,7 @@ return function(GameplayTests, CONFIG)
 	Container.BorderSizePixel = 0
 
 	ScrollingFrame.BackgroundTransparency = 1
+	ScrollingFrame.BorderSizePixel = 0
 
 	Console.TextBox.TextSize = 18
 	Console.TextBox.TextColor3 = Color3.new(1, 1, 1)
