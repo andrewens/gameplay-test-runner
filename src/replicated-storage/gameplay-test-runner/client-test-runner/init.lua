@@ -1,4 +1,5 @@
 -- dependency
+local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
@@ -21,6 +22,7 @@ local DEFAULT_CONFIG = {
 	PRIORITY_TESTS = {},
 	ONLY_RUN_PRIORITY_TESTS = false,
 	TEST_NAME_TO_SERVER_INITIALIZER = {},
+	CONSOLE_TOGGLE_KEYS = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
 }
 local DEFAULT_COMMAND_LINE_PROMPT = LocalPlayer.Name .. ">"
 local END_OF_TESTS_MESSAGE = "This is the last test!! <:{O"
@@ -101,7 +103,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	-- answering gameplay test questions
 	yes = {
 		Description = "Answers 'yes' to a question in a gameplay test, which marks the question as passing.",
-		Aliases = { "yes", "y", "yeah", "yep", "ya", "yesh", "mhm", "ye", "yea", "affirmative", "yuh", },
+		Aliases = { "yes", "y", "yeah", "yep", "ya", "yesh", "mhm", "ye", "yea", "affirmative", "yuh", "ys" },
 		Usage = {
 			"-- after a test asks you if something works,\n-- and it does actually work\n"
 				.. LOCAL_PLAYER_NAME
@@ -113,7 +115,7 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	},
 	no = {
 		Description = "Answers 'no' to a question in a gameplay test, which marks the question as failing.",
-		Aliases = { "no", "n", "nope", "noe", "nop", "nah", "na", "negative", },
+		Aliases = { "no", "n", "nope", "noe", "nop", "nah", "na", "negative" },
 		Usage = {
 			"-- after a test asks you if something works,\n-- and it does NOT work\n"
 				.. LOCAL_PLAYER_NAME
@@ -237,7 +239,8 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	stop = {
 		Description = "Stops text from color shifting. See the 'rainbow' command.",
 		Aliases = {
-			"stop", "sto",
+			"stop",
+			"sto",
 		},
 		Usage = {
 			"-- make text start color shifting\n" .. LOCAL_PLAYER_NAME .. ">rainbow",
@@ -324,6 +327,12 @@ local CANONICAL_COMMAND_METADATA = { -- string commandName --> { <metadata> }
 	},
 }
 
+local UI_SIZE = UDim2.new(0, 600, 1, -150)
+local UI_ACTIVE_POSITION = UDim2.new(0.5, 0, 1, -75)
+local UI_INACTIVE_POSITION = UDim2.new(0.5, 0, 0, 30)
+local UI_STATUS_BAR_HEIGHT = 30 -- px
+local UI_TWEEN_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
+
 -- init | index command metadata by alias
 for commandName, CommandMetadata in CANONICAL_COMMAND_METADATA do
 	if CommandMetadata.Aliases then
@@ -334,7 +343,7 @@ for commandName, CommandMetadata in CANONICAL_COMMAND_METADATA do
 end
 
 -- public
-return function(ScrollingFrame, GameplayTests, CONFIG)
+return function(GameplayTests, CONFIG)
 	--[[
         @param: Instance ScrollingFrame
         @param: table GameplayTests
@@ -349,12 +358,6 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
     ]]
 
 	-- sanity check
-	if typeof(ScrollingFrame) ~= "Instance" then
-		error(tostring(ScrollingFrame) .. " is not a ScrollingFrame! It's a " .. typeof(ScrollingFrame))
-	end
-	if not ScrollingFrame:IsA("ScrollingFrame") then
-		error(tostring(ScrollingFrame) .. " is not a ScrollingFrame! It's a " .. ScrollingFrame.ClassName)
-	end
 	if typeof(GameplayTests) ~= "table" then
 		error(tostring(GameplayTests) .. " is not a table! It's a " .. typeof(GameplayTests))
 	end
@@ -369,6 +372,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local PRIORITY_TESTS = CONFIG.PRIORITY_TESTS or {}
 	local ONLY_RUN_PRIORITY_TESTS = CONFIG.ONLY_RUN_PRIORITY_TESTS
 	local TEST_NAME_TO_SERVER_INITIALIZER = CONFIG.TEST_NAME_TO_SERVER_INITIALIZER or {}
+	local CONSOLE_TOGGLE_KEYS = CONFIG.CONSOLE_TOGGLE_KEYS or DEFAULT_CONFIG.CONSOLE_TOGGLE_KEYS
 
 	-- var
 	local isRunning = true -- this is set to false when GameplayTestRunner is destroyed
@@ -395,6 +399,10 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	local testBrowserOutput = ""
 
 	local RainbowTweens = {}
+
+	local ScreenGui, Container
+	local ScrollingFrame, StatusBar
+	local consoleIsFocused = false
 
 	-- private | compile gameplay tests from parameters
 	local function saveTestName(testName)
@@ -541,6 +549,28 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 			=============================================
 		]]
 		Console.output("\n" .. string.rep("=", HORIZONTAL_LINE_WIDTH))
+	end
+
+	-- private | activate/deactivate console
+	local function setConsoleActive(isActive)
+		assert(typeof(isActive) == "boolean")
+
+		TweenService:Create(Container, UI_TWEEN_INFO, {
+			Position = if isActive then UI_ACTIVE_POSITION else UI_INACTIVE_POSITION,
+		}):Play()
+
+		consoleIsFocused = isActive
+
+		StatusBar.Text = if isActive then "Hide console" else "Show console"
+
+		if isActive then
+			Console.TextBox:CaptureFocus()
+		else
+			Console.TextBox:ReleaseFocus()
+		end
+	end
+	local function toggleConsoleActive()
+		setConsoleActive(not consoleIsFocused)
 	end
 
 	-- public | test output commands
@@ -1379,12 +1409,70 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 
 	-- init
 	extractGameplayTests()
+
+	-- init gui elements
+	ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Parent = LocalPlayer.PlayerGui
+	TestRunnerMaid(ScreenGui)
+
+	Container = Instance.new("Frame")
+	Container.Size = UI_SIZE
+	Container.Position = UI_INACTIVE_POSITION
+	Container.AnchorPoint = Vector2.new(0.5, 1)
+	Container.Parent = ScreenGui
+
+	ScrollingFrame = Instance.new("ScrollingFrame")
+	ScrollingFrame.Size = UDim2.new(1, 0, 1, -UI_STATUS_BAR_HEIGHT)
+	ScrollingFrame.Parent = Container
+
+	StatusBar = Instance.new("TextButton")
+	StatusBar.Position = UDim2.new(0, 0, 1, -UI_STATUS_BAR_HEIGHT)
+	StatusBar.Size = UDim2.new(1, 0, 0, UI_STATUS_BAR_HEIGHT)
+	StatusBar.Parent = Container
+
+	-- input toggles console
+	StatusBar.Activated:Connect(toggleConsoleActive)
+	TestRunnerMaid(UserInputService.InputBegan:Connect(function(InputObject, gameProcessed)
+		-- did the user press a CONSOLE_TOGGLE_KEY?
+		local userPressedToggleKey = false
+		for _, keyCode in CONSOLE_TOGGLE_KEYS do
+			if InputObject.KeyCode == keyCode then
+				userPressedToggleKey = true
+				break
+			end
+		end
+		if not userPressedToggleKey then
+			return
+		end
+
+		-- do the thing
+		toggleConsoleActive()
+	end))
+
+	-- init command prompt
 	Console = Terminal(ScrollingFrame, TestCommands)
 	TestRunnerMaid(Console)
 	setmetatable(TestConsole, { __index = Console })
 	TestRunnerMaid(function()
 		isRunning = false
 	end)
+
+	-- ui styling
+	Container.BackgroundColor3 = Color3.new(0, 0, 0)
+	Container.BackgroundTransparency = 0.5
+	Container.BorderSizePixel = 0
+
+	ScrollingFrame.BackgroundTransparency = 1
+
+	Console.TextBox.TextSize = 18
+	Console.TextBox.TextColor3 = Color3.new(1, 1, 1)
+	Console.TextBox.Font = Enum.Font.Code
+	Console.TextBox.BackgroundTransparency = 1
+
+	StatusBar.TextSize = 18
+	StatusBar.TextColor3 = Color3.new(1, 1, 1)
+	StatusBar.Font = Enum.Font.Code
+	StatusBar.BackgroundTransparency = 1
 
 	-- create a thread per test function
 	for i, testName in GameplayTestOrder do
@@ -1431,6 +1519,7 @@ return function(ScrollingFrame, GameplayTests, CONFIG)
 	end)
 
 	-- automatically begin running tests
+	setConsoleActive(true)
 	nextTest()
 	Console.initialize() -- i think this yields...
 

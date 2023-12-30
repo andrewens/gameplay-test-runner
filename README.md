@@ -32,6 +32,8 @@ It's all through a Command Line Interface, btw.
 * ~~Display users in session summary!~~ `Dec 18, 2023`
 * ~~Erase tests~~ `Dec 18, 2023`
 * ~~Help command~~ `Dec 19, 2023`
+* ~~Allow user to tab between game and command prompt~~ `Dec 30, 2023`
+* Welcome screen on start
 * Support player leaving comments
 * Option to restart a test
 * Support returning Maid tasks from server test initializers
@@ -39,6 +41,7 @@ It's all through a Command Line Interface, btw.
 
 ### BUGS
 * aliases for `no` command don't work for some reason
+* Fix the bad text resizing >_<
 
 ### WISHLIST
 * Exit test-response mode after viewing a session summary
@@ -64,7 +67,6 @@ It's all through a Command Line Interface, btw.
   * Also a mechanism for filling in a word, centered, in a line
 * TestConsole.log (saves to test state), Console.print (automatic newline + infinite # of args), Console.out
 * Refactor with an AppState proxy table and a million helper functions!
-* Fix the bad text resizing >_<
 * Autocomplete / hints for command completion
   * Probably refactor terminal to add commands in JSON format including documentation/arguments for automatic `help` support
 * Fix the text getting cut off by scroll bar `>:(`
