@@ -1439,6 +1439,14 @@ return function(GameplayTests, CONFIG)
 	StatusBar.Size = UDim2.new(1, 0, 0, UI_STATUS_BAR_HEIGHT)
 	StatusBar.Parent = Container
 
+	-- init command prompt
+	Console = Terminal(ScrollingFrame, TestCommands)
+	TestRunnerMaid(Console)
+	setmetatable(TestConsole, { __index = Console })
+	TestRunnerMaid(function()
+		isRunning = false
+	end)
+
 	-- input toggles console
 	StatusBar.Activated:Connect(toggleConsoleActive)
 	TestRunnerMaid(UserInputService.InputBegan:Connect(function(InputObject, gameProcessed)
@@ -1457,14 +1465,15 @@ return function(GameplayTests, CONFIG)
 		-- do the thing
 		toggleConsoleActive()
 	end))
-
-	-- init command prompt
-	Console = Terminal(ScrollingFrame, TestCommands)
-	TestRunnerMaid(Console)
-	setmetatable(TestConsole, { __index = Console })
-	TestRunnerMaid(function()
-		isRunning = false
-	end)
+	TestRunnerMaid(Console.TextBox.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			return
+		end
+		if not consoleIsFocused then
+			return
+		end
+		setConsoleActive(false)
+	end))
 
 	-- ui styling
 	Container.BackgroundColor3 = Color3.new(0, 0, 0)
